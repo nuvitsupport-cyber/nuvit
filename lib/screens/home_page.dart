@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:home_widget/home_widget.dart';
 import '../layouts/desktop_layout.dart';
+import '../layouts/mobile_layout.dart';
 import '../models/device_model.dart';
 import '../services/weather_service.dart'; 
 import '../services/storage_service.dart';
@@ -72,14 +73,33 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: DesktopLayout(
-        selectedIndex: _selectedIndex,
-        onIndexChanged: (int newIndex) async {
-          setState(() {
-            _selectedIndex = newIndex;
-          });
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Если ширина экрана меньше 900 (как и в твоем MainDashboardContent),
+          // то используем мобильную оболочку из концепта
+          if (constraints.maxWidth < 900) {
+            return MobileLayout(
+              selectedIndex: _selectedIndex,
+              onIndexChanged: (int newIndex) {
+                setState(() {
+                  _selectedIndex = newIndex;
+                });
+              },
+              child: _getSelectedPage(_selectedIndex),
+            );
+          }
+
+          // Для больших экранов оставляем твой оригинальный DesktopLayout
+          return DesktopLayout(
+            selectedIndex: _selectedIndex,
+            onIndexChanged: (int newIndex) async {
+              setState(() {
+                _selectedIndex = newIndex;
+              });
+            },
+            child: _getSelectedPage(_selectedIndex),
+          );
         },
-        child: _getSelectedPage(_selectedIndex),
       ),
     );
   }
