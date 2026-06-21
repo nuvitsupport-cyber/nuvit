@@ -623,8 +623,11 @@ int calculateAutomationCount() {
                   borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(28),
-                  child: Column(
+  padding: EdgeInsets.symmetric(
+    horizontal: MediaQuery.of(context).size.width < 600 ? 16 : 28,
+    vertical: 24,
+  ),
+  child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -7625,10 +7628,13 @@ else if (isRcd) {
       ),
       body: SafeArea(
         child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 800),
-            margin: const EdgeInsets.all(32),
-            padding: const EdgeInsets.all(32),
+          child: Builder( // Оборачиваем в Builder, чтобы получить контекст для MediaQuery
+      builder: (context) {
+        final isMobile = MediaQuery.of(context).size.width < 600;
+        return Container(
+          constraints: const BoxConstraints(maxWidth: 800),
+          margin: EdgeInsets.all(isMobile ? 16 : 32),
+          padding: EdgeInsets.all(isMobile ? 16 : 32),
             decoration: BoxDecoration(
               color: brandCard,
               borderRadius: BorderRadius.circular(28),
@@ -7719,7 +7725,12 @@ else if (isRcd) {
                                               ),
                                             ),
                                             const SizedBox(height: 4),
-                                            Text(item['desc'] as String, style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                                            Text(
+  item['desc'] as String,
+  maxLines: 2, // Ограничиваем двумя строками
+  overflow: TextOverflow.ellipsis, // Добавляем троеточие в конце
+  style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+),
                                           ],
                                         ),
                                       ),
@@ -7734,16 +7745,18 @@ else if (isRcd) {
                                             )
                                           : const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.neon, size: 16),
                                     ],
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ); 
+            }, 
+          ), 
         ),
       ),
     );
