@@ -1,4 +1,3 @@
-// lib/layouts/mobile_layout.dart
 import 'package:flutter/material.dart';
 import '../utils/app_colors.dart';
 
@@ -25,10 +24,9 @@ class MobileLayout extends StatelessWidget {
         backgroundColor: customBackgroundColor,
         elevation: 0,
         scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.menu, color: Colors.white, size: 26),
-          onPressed: () {}, // Бургер-меню
-        ),
+        // Полоски (leading бургер-меню) удалены, чтобы логотип центрировался ровно
+        leading: null, 
+        automaticallyImplyLeading: false,
         centerTitle: true,
         title: RichText(
           text: TextSpan(
@@ -83,7 +81,7 @@ class MobileLayout extends StatelessWidget {
         ],
       ),
       body: SafeArea(child: child),
-      // Нижнее меню навигации (4 вкладки из концепта)
+      // Нижнее меню навигации (синхронизировано с DesktopLayout)
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           border: Border(
@@ -92,14 +90,14 @@ class MobileLayout extends StatelessWidget {
         ),
         child: BottomNavigationBar(
           backgroundColor: customBackgroundColor,
-          type: BottomNavigationBarType.fixed,
+          type: BottomNavigationBarType.fixed, // Позволяет вместить 5 элементов в ряд равномерно
           currentIndex: selectedIndex,
           onTap: onIndexChanged,
           selectedItemColor: AppColors.neon,
           unselectedItemColor: Colors.white38,
-          selectedFontSize: 11,
-          unselectedFontSize: 11,
-          iconSize: 24,
+          selectedFontSize: 10, // Чуть уменьшили шрифт, чтобы длинные названия красиво влезали в ряд
+          unselectedFontSize: 10,
+          iconSize: 22,
           items: const [
             BottomNavigationBarItem(
               icon: Padding(
@@ -115,24 +113,35 @@ class MobileLayout extends StatelessWidget {
             BottomNavigationBarItem(
               icon: Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.history_toggle_off),
+                child: Icon(Icons.bolt_outlined),
               ),
               activeIcon: Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.history),
+                child: Icon(Icons.bolt),
               ),
-              label: 'History',
+              label: 'Енергохаб',
             ),
             BottomNavigationBarItem(
               icon: Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.developer_board),
+                child: Icon(Icons.account_tree_outlined),
               ),
               activeIcon: Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.developer_board),
+                child: Icon(Icons.account_tree),
               ),
-              label: 'Devices',
+              label: 'Інфраструктура', // Немного сократили для мобильного, чтобы текст не наезжал
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.assignment_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.assignment),
+              ),
+              label: 'Reports',
             ),
             BottomNavigationBarItem(
               icon: Padding(

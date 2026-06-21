@@ -375,12 +375,18 @@ for (final category in currentCategories) {
     }
   }
 }
+final screenWidth = MediaQuery.of(context).size.width;
+
+final isMobile = screenWidth < 700;
+final isTablet = screenWidth >= 700 && screenWidth < 1100;
+final isDesktop = screenWidth >= 1100;
+  final paddingValue = isMobile ? 16.0 : 24.0;
 
 return Scaffold(
       backgroundColor: brandBg,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(paddingValue),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -389,6 +395,7 @@ return Scaffold(
 
               /// ВИБІР ТИПУ НЕРУХОМОСТІ
               _buildMainCard(
+                padding: paddingValue,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -409,7 +416,27 @@ return Scaffold(
                       ),
                     ),
                     const SizedBox(height: 24),
-
+if (isMobile)
+  Column(
+    children: [
+      _buildPropertyCard(
+        title: 'Квартира',
+        subtitle: 'Багатоквартирний будинок',
+        icon: Icons.apartment_outlined,
+        isSelected: selectedProperty == 0,
+        onTap: () => setState(() => selectedProperty = 0),
+      ),
+      const SizedBox(height: 16),
+      _buildPropertyCard(
+        title: 'Приватний будинок',
+        subtitle: 'Приватний будинок або котедж',
+        icon: Icons.home_outlined,
+        isSelected: selectedProperty == 1,
+        onTap: () => setState(() => selectedProperty = 1),
+      ),
+    ],
+  )
+else
                     Row(
                       children: [
                         Expanded(
@@ -470,55 +497,102 @@ return Scaffold(
                     ),
                     const SizedBox(height: 24),
 
+                    
                     /// TAB BAR
-                    Container(
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: brandInnerBg,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        children: List.generate(
-                          tabs.length,
-                          (index) => Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  selectedTab = index;
-                                });
-                              },
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14),
-                                  color: selectedTab == index
-                                      ? AppColors.neon.withValues(alpha: 0.12)
-                                      : Colors.transparent,
-                                  border: selectedTab == index
-                                      ? Border.all(
-                                          color: AppColors.neon
-                                              .withValues(alpha: 0.3),
-                                        )
-                                      : null,
+                    isMobile
+                        ? SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Container(
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: brandInnerBg,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Row(
+                                children: List.generate(
+                                  tabs.length,
+                                  (index) => GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        selectedTab = index;
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 20), // Фіксований відступ тексту для скролу
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        color: selectedTab == index
+                                            ? AppColors.neon.withValues(alpha: 0.12)
+                                            : Colors.transparent,
+                                        border: selectedTab == index
+                                            ? Border.all(
+                                                color: AppColors.neon.withValues(alpha: 0.3),
+                                              )
+                                            : null,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          tabs[index],
+                                          style: TextStyle(
+                                            color: selectedTab == index ? AppColors.neon : AppColors.textMuted,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                                child: Center(
-                                  child: Text(
-                                    tabs[index],
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: selectedTab == index
-                                          ? AppColors.neon
-                                          : AppColors.textMuted,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
+                              ),
+                            ),
+                          )
+                        : Container(
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: brandInnerBg,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: List.generate(
+                                tabs.length,
+                                (index) => Expanded(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        selectedTab = index;
+                                      });
+                                    },
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        color: selectedTab == index
+                                            ? AppColors.neon.withValues(alpha: 0.12)
+                                            : Colors.transparent,
+                                        border: selectedTab == index
+                                            ? Border.all(
+                                                color: AppColors.neon.withValues(alpha: 0.3),
+                                              )
+                                            : null,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          tabs[index],
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: selectedTab == index
+                                                ? AppColors.neon
+                                                : AppColors.textMuted,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    ),
 
                     const SizedBox(height: 24),
 
@@ -547,6 +621,7 @@ return Scaffold(
         title: device['title']?.toString() ?? device['name']?.toString() ?? 'Обладнання',
         subtitle: device['subtitle']?.toString() ?? '',
         useAccentColor: device['useAccentColor'] == true,
+        isMobile: isMobile,
                                 ),
                               ),
                             );
@@ -586,107 +661,179 @@ return Scaffold(
               const SizedBox(height: 24),
 
               /// ГЛОБАЛЬНИЙ СПИСОК ПРИЛАДІВ
-              _buildMainCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-  children: [
-    Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Глобальний список приладів',
-            style: TextStyle(
-              color: AppColors.textMain,
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-
-          SizedBox(height: 6),
-
-          Text(
-            'Керування побутовими приладами для розрахунку автономності',
-            style: TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    ),
-
-        _buildGhostButton(
-          icon: Icons.refresh_rounded,
-          title: 'Скинути до замовчування',
-          onTap: _resetToDefaults,
-        ),
-
-        const SizedBox(width: 14),
-
-        _buildPrimaryButton(
-          icon: Icons.add,
-          title: 'Додати прилад',
-          onTap: () => _showAddDeviceDialog(context),
-        ),
-
-        const SizedBox(width: 16),
-
-        Container(
-  padding: const EdgeInsets.symmetric(
-    horizontal: 16,
-    vertical: 12,
-  ),
-  decoration: BoxDecoration(
-    color: brandBg,
-    borderRadius: BorderRadius.circular(16),
-    border: Border.all(
-      color: Colors.white.withOpacity(.05),
-    ),
-  ),
-  child: Row(
+_buildMainCard(
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Icon(
-        Icons.devices_outlined,
-        color: AppColors.neon,
-        size: 18,
-      ),
-      const SizedBox(width: 8),
-      Text(
-        '$totalDevicesCount',
-        style: const TextStyle(
-          color: AppColors.textMain,
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    ],
-  ),
+      
+      if (isMobile) ...[
+        // ==========================================
+        // 📱 ВЕРСТКА ДЛЯ ТЕЛЕФОНУ (Як зараз — Адаптивна з переносами)
+        // ==========================================
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            // Блок заголовка на весь екран смартфона
+            SizedBox(
+              width: double.infinity, 
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Глобальний список приладів',
+                    style: TextStyle(
+                      color: AppColors.textMain,
+                      fontSize: 22, // Зменшений шрифт для мобільного
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Керування побутовими приладами для розрахунку автономності',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Кнопка з короткою назвою для телефону
+            _buildGhostButton(
+              icon: Icons.refresh_rounded,
+              title: 'Скинути', 
+              onTap: () {
+    setState(() {
+      _resetToDefaults();
+    });
+  },
 ),
+            
+            _buildPrimaryButton(
+              icon: Icons.add,
+              title: 'Додати прилад',
+              onTap: () => _showAddDeviceDialog(context),
+            ),
+            
+            // Лічильник із фіксованим розміром (щоб не розтягувався у Wrap)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: brandBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(.05)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min, 
+                children: [
+                  const Icon(Icons.devices_outlined, color: AppColors.neon, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$totalDevicesCount',
+                    style: const TextStyle(
+                      color: AppColors.textMain,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ] else ...[
+        // ==========================================
+        // 💻 ВЕРСТКА ДЛЯ МОНІТОРА (Як було раніше — Строга лінійна структура)
+        // ==========================================
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Глобальний список приладів',
+                    style: TextStyle(
+                      color: AppColors.textMain,
+                      fontSize: 24, // Повнорозмірний заголовок
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Керування побутовими приладами для розрахунку автономності',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            _buildGhostButton(
+              icon: Icons.refresh_rounded,
+              title: 'Скинути до замовчування', // Повна назва кнопки
+              onTap: () {
+    setState(() {
+      _resetToDefaults();
+    });
+  },
+),
+            
+            const SizedBox(width: 14), // Старі чіткі відступи монітора
+            
+            _buildPrimaryButton(
+              icon: Icons.add,
+              title: 'Додати прилад',
+              onTap: () => _showAddDeviceDialog(context),
+            ),
+            
+            const SizedBox(width: 16),
+            
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: brandBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(.05)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.devices_outlined, color: AppColors.neon, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$totalDevicesCount',
+                    style: const TextStyle(
+                      color: AppColors.textMain,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ],
-    ),
 
-    const SizedBox(height: 24),
+      const SizedBox(height: 24),
 
-                    _buildTableHeader(),
-                    const SizedBox(height: 12),
+      // Шапка таблиці відображається ТІЛЬКИ на ПК/Моніторах
+      if (!isMobile) ...[
+        _buildTableHeader(),
+        const SizedBox(height: 12),
+      ],
 
-                    /// Динамический рендеринг категорий и приборов
-                    ...currentCategories.map((category) {
-                      final allDevices = [
-
-  ...GlobalDevicesCatalog.byCategoryAndProperty(
-    category,
-    selectedProperty,
-  ),
-
-  ...customDevices.where(
-    (d) => d.category == category,
-  ),
-
-];
+      /// Динамічний рендеринг категорій і приборів
+      ...currentCategories.map((category) {
+        final allDevices = [
+          ...GlobalDevicesCatalog.byCategoryAndProperty(category, selectedProperty),
+          ...customDevices.where((d) => d.category == category),
+        ];
                       // Исключаем из верстки те приборы, чьи имена есть в deletedDeviceNames
                       final devices = allDevices.where((d) => !deletedDeviceNames.contains(d.name)).toList();
                       devices.sort((a, b) {
@@ -726,7 +873,15 @@ return Scaffold(
                               );
                               return Column(
                                 children: [
-                                  _buildDeviceRow(device: device, config: config),
+                                  isMobile
+    ? _buildDeviceMobileCard(
+        device: device,
+        config: config,
+      )
+    : _buildDeviceRow(
+        device: device,
+        config: config,
+      ),
                                   Divider(color: AppColors.textMuted.withOpacity(0.08), height: 1),
                                 ],
                               );
@@ -743,7 +898,7 @@ const SizedBox(height: 20),
 Text(
   'Збереження налаштувань',
   style: TextStyle(
-    fontSize: 18,
+    fontSize: isMobile ? 16 : 18,
     fontWeight: FontWeight.bold,
   ),
 ),
@@ -752,12 +907,16 @@ const SizedBox(height: 12),
 
 Text(
   'Зберігає всі зміни на сторінці, включаючи обладнання, налаштування пристроїв та користувацькі дані.',
-  textAlign: TextAlign.center,
+  textAlign: isMobile ? TextAlign.start : TextAlign.center,
+  style: TextStyle(
+    color: AppColors.textMuted,
+    fontSize: isMobile ? 13 : 14,
+  ),
 ),
-const SizedBox(height: 12),
+const SizedBox(height: 20),
 Center(
   child: SizedBox(
-    width: 220,
+    width: isMobile ? double.infinity : 220,
     height: 56,
     child: ElevatedButton(
       onPressed: _saveData,
@@ -792,33 +951,36 @@ Center(
 
 
   Widget _buildHeader() {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Налаштування інфраструктури',
-          style: TextStyle(
-            color: AppColors.textMain,
-            fontSize: 38,
-            fontWeight: FontWeight.w800,
-          ),
+  final isMobile = MediaQuery.of(context).size.width < 900;
+  
+  return Column( // Прибрали const звідси
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Налаштування інфраструктури',
+        style: TextStyle(
+          color: AppColors.textMain,
+          fontSize: isMobile ? 24 : 38, // Тепер це працює без помилок!
+          fontWeight: FontWeight.w800,
         ),
-        SizedBox(height: 8),
-        Text(
-          'Налаштуйте вашу енергосистему та обладнання',
-          style: TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 16,
-          ),
+      ),
+      const SizedBox(height: 8), // Додали const сюди
+      const Text( // Додали const сюди, бо цей текст статичний
+        'Налаштуйте вашу енергосистему та обладнання',
+        style: TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 16,
         ),
-      ],
-    );
+      ),
+    ],
+  );
   }
 
-  Widget _buildMainCard({required Widget child}) {
-    return Container(
+  Widget _buildMainCard({required Widget child, double padding = 24.0}) {
+  return Container(
+    padding: EdgeInsets.all(padding),
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      
       decoration: BoxDecoration(
         color: brandCard,
         borderRadius: BorderRadius.circular(28),
@@ -916,6 +1078,8 @@ Center(
   }
 
   Widget _buildAddEquipmentCard({required int currentTab}) {
+    final isMobile = MediaQuery.of(context).size.width < 700;
+
     return InkWell(
       onTap: () async {
         // Собираем плоский список названий абсолютно всех уже подключенных устройств
@@ -927,51 +1091,47 @@ Center(
             }
           }
         }
-
         final result = await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ConnectEquipmentPage(
               categoryIndex: currentTab,
               propertyType: selectedProperty,
-              hasSolarPanels: _hasSolarPanels, 
+              hasSolarPanels: _hasSolarPanels,
               connectedDeviceNames: connectedDeviceNames, // Передаем список для блокировки
             ),
           ),
         );
-
         if (result != null && result is Map<String, dynamic>) {
-  // Гарантируем наличие ключа 'title' для обратной совместимости с тайлом
-  final title = result['title'] ?? result['name'] ?? '';
-  result['title'] = title; 
-
-  bool isDuplicate = false;
-  for (var devices in tabDevices.values) {
-    if (devices.any((d) => (d['title'] ?? d['name']) == title)) {
-      isDuplicate = true;
-      break;
-    }
-  }
-
-  if (isDuplicate) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Пристрій "$title" вже додано до конфігурації!'),
-          backgroundColor: Colors.orangeAccent,
-        ),
-      );
-    }
-  } else {
-    setState(() {
-      tabDevices[currentTab]!.add(result);
-    });
-  }
-}
+          // Гарантируем наличие ключа 'title' для обратной совместимости с тайлом
+          final title = result['title'] ?? result['name'] ?? '';
+          result['title'] = title;
+          bool isDuplicate = false;
+          for (var devices in tabDevices.values) {
+            if (devices.any((d) => (d['title'] ?? d['name']) == title)) {
+              isDuplicate = true;
+              break;
+            }
+          }
+          if (isDuplicate) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Пристрій "$title" вже додано до конфігурації!'),
+                  backgroundColor: Colors.orangeAccent,
+                ),
+              );
+            }
+          } else {
+            setState(() {
+              tabDevices[currentTab]!.add(result);
+            });
+          }
+        }
       },
       borderRadius: BorderRadius.circular(22),
       child: Container(
-        height: 240,
+        height: isMobile ? 140 : 240,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
@@ -979,32 +1139,31 @@ Center(
           ),
           color: brandInnerBg,
         ),
-        child: const Center(
+        child: Center( // <-- КЛЮЧОВЕ: Прибрали const звідси, бо всередині є динамічний isMobile
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.add_circle_outline_rounded,
                 color: AppColors.neon,
-                size: 54,
+                size: isMobile ? 36 : 54, // Тепер це працює легально!
               ),
-              SizedBox(height: 18),
+              SizedBox(height: isMobile ? 10 : 18),
               Text(
                 'Підключити обладнання',
                 style: TextStyle(
                   color: AppColors.neon,
-                  fontSize: 20,
+                  fontSize: isMobile ? 16 : 20,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              SizedBox(height: 8),
-              Text(
-                'Натисніть для додавання пристрою',
-                style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 13,
+              if (!isMobile) ...[
+                const SizedBox(height: 8), // Поставили const сюди
+                const Text( // Поставили const сюди
+                  'Натисніть для додавання пристрою',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 13),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -1064,9 +1223,119 @@ Center(
     required String title,
     required String subtitle,
     required bool useAccentColor,
+    required bool isMobile,
   }) {
     final baseColor = useAccentColor ? AppColors.neon : AppColors.textMain;
-    
+    // ================= 📱 МОБІЛЬНА ВЕРСІЯ =================
+    if (isMobile) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: brandInnerBg,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                // Використовуємо гарну неонову іконку навіть на мобільному (але трохи меншу 44x44)
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: const Color(0xFF020D2D),
+                    border: Border.all(
+                      color: baseColor.withValues(alpha: 0.25),
+                      width: 1,
+                    ),
+                  ),
+                  child: NeonEquipmentIcon(
+                    icon: icon,
+                    neonColor: baseColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title, 
+                        style: const TextStyle(
+                          color: AppColors.textMain, 
+                          fontWeight: FontWeight.w700, 
+                          fontSize: 16,
+                        ),
+                      ),
+                      if (subtitle.isNotEmpty) 
+                        Text(
+                          subtitle, 
+                          style: const TextStyle(
+                            color: AppColors.textMuted, 
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24, color: Colors.white10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Підключено', 
+                  style: TextStyle(
+                    color: AppColors.neon, 
+                    fontWeight: FontWeight.w600, 
+                    fontSize: 13,
+                  ),
+                ),
+                Row(
+                  children: [
+                    /// ⚙️ РОБОЧА КНОПКА НАЛАШТУВАНЬ ДЛЯ МОБІЛКИ
+                    IconButton(
+                      icon: const Icon(Icons.settings_outlined, color: AppColors.textMuted, size: 20),
+                      onPressed: () async {
+                        final updatedConfig = await ConnectEquipmentPage.openDeviceSetupBottomSheet(
+                          context,
+                          device,
+                          isEditing: true,
+                        );
+
+                        if (updatedConfig != null && mounted) {
+                          setState(() {
+                            final idx = tabDevices[selectedTab]!.indexOf(device);
+                            if (idx != -1) {
+                              tabDevices[selectedTab]![idx] = updatedConfig;
+                            }
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 4),
+                    /// 🗑️ РОБОЧА КНОПКА ВИДАЛЕННЯ ДЛЯ МОБІЛКИ
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                      onPressed: () {
+                        setState(() {
+                          tabDevices[selectedTab]!.removeAt(index);
+                        });
+                      },
+                    ),
+                  ],
+                )
+              ],
+            )
+          ],
+        ),
+      );
+    }
+
+    // ================= 💻 ДЕСКТОПНА ВЕРСІЯ (МОНІТОР) =================
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -2371,6 +2640,487 @@ const SizedBox(height: 14),
     );
   }
    
+Widget _buildDeviceMobileCard({
+    required DeviceInfo device,
+    required DeviceConfig config,
+  }) {
+    final modeColor = _getModeColor(config.energyMode);
 
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: config.amount > 0
+            ? const Color(0xFF0E1D3E)
+            : const Color(0xFF081224).withOpacity(.35),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: config.amount > 0
+              ? modeColor.withOpacity(.18)
+              : Colors.white.withOpacity(.03),
+          width: 1.2,
+        ),
+        boxShadow: config.amount > 0
+            ? [
+                BoxShadow(
+                  color: modeColor.withOpacity(.12),
+                  blurRadius: 30,
+                  spreadRadius: 1,
+                ),
+                BoxShadow(
+                  color: modeColor.withOpacity(.05),
+                  blurRadius: 60,
+                  spreadRadius: 4,
+                ),
+              ]
+            : [],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          /// 1. Иконка и название
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: config.amount > 0
+                      ? const Color(0xFF0D1A36)
+                      : const Color(0xFF081224),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: config.amount > 0
+                        ? modeColor.withOpacity(.18)
+                        : Colors.white.withOpacity(.03),
+                    width: 1.2,
+                  ),
+                  boxShadow: config.amount > 0
+                      ? [
+                          BoxShadow(
+                            color: modeColor.withOpacity(.12),
+                            blurRadius: 18,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : [],
+                ),
+                child: Icon(
+                  device.icon,
+                  size: 20,
+                  color: config.amount > 0
+                      ? modeColor
+                      : AppColors.textMuted.withOpacity(.7),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  device.name,
+                  style: TextStyle(
+                    color: config.amount > 0
+                        ? AppColors.textMain
+                        : AppColors.textMuted,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+
+          if (config.amount == 0) ...[
+            const SizedBox(height: 18),
+            /// Состояние ВЫКЛЮЧЕНО (Активация и удаление)
+            Row(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: _buildActivateButton(
+                      device,
+                      config,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                _buildActionButton(
+                  hoverKey: '${device.name}_delete',
+                  hoverSet: _hoveredDeleteButtons,
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.textMuted,
+                  onTap: () => setState(() {
+                    deletedDeviceNames.add(device.name);
+                  }),
+                ),
+              ],
+            ),
+          ] else ...[
+            const SizedBox(height: 18),
+
+            /// МОЩНОСТЬ
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.bolt_rounded,
+                      size: 18,
+                      color: AppColors.neon,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Потужність',
+                      style: TextStyle(
+                        color: AppColors.textMuted.withOpacity(.8),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(
+                  width: 110,
+                  height: 48,
+                  child: TextField(
+                    controller: _powerControllers.putIfAbsent(
+                      device.name,
+                      () => TextEditingController(
+                        text: (customDevicePowers[device.name] ?? device.typicalPower)
+                            .toStringAsFixed(0),
+                      ),
+                    ),
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.textMain,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: .3,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      filled: true,
+                      fillColor: brandCard,
+                      suffixText: 'W',
+                      suffixStyle: TextStyle(
+                        color: AppColors.neon.withOpacity(.7),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                          color: Colors.white.withOpacity(.05),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                          color: AppColors.neon.withOpacity(.8),
+                          width: 1.4,
+                        ),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      final parsed = double.tryParse(value);
+                      if (parsed != null) {
+                        setState(() {
+                          customDevicePowers[device.name] = parsed;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            /// КОЛИЧЕСТВО
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Кількість',
+                  style: TextStyle(
+                    color: AppColors.textMuted.withOpacity(.8),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Container(
+                  width: 140,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: brandCard,
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: AppColors.neon.withOpacity(.12),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.neon.withOpacity(.05),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: _buildMiniBtn(
+                            icon: Icons.remove,
+                            onTap: config.amount > 0
+                                ? () => setState(() => config.amount--)
+                                : null,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: 40,
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${config.amount}',
+                          style: const TextStyle(
+                            color: AppColors.neon,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: _buildMiniBtn(
+                            icon: Icons.add,
+                            onTap: () => setState(() => config.amount++),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            /// ГОДИННИК
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Годин на добу',
+                  style: TextStyle(
+                    color: AppColors.textMuted.withOpacity(.8),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(
+                  width: 110,
+                  height: 48,
+                  child: TextFormField(
+                    controller: _hoursControllers.putIfAbsent(
+                      device.name,
+                      () => TextEditingController(
+                        text: config.hoursPerDay.toString(),
+                      ),
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.textMain,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: .3,
+                    ),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: brandCard,
+                      suffixText: 'год',
+                      suffixStyle: TextStyle(
+                        color: AppColors.neon.withOpacity(.7),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                          color: Colors.white.withOpacity(.06),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                          color: AppColors.neon.withOpacity(.8),
+                          width: 1.3,
+                        ),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      final parsed =
+                          double.tryParse(value.replaceAll(',', '.'));
+                      if (parsed != null) {
+                        final corrected = parsed.clamp(0.0, 24.0);
+                        setState(() {
+                          config.hoursPerDay = corrected;
+                        });
+                        if (parsed != corrected) {
+                          _hoursControllers[device.name]!.text =
+                              corrected.toString();
+                          _hoursControllers[device.name]!.selection =
+                              TextSelection.fromPosition(
+                            TextPosition(
+                              offset: _hoursControllers[device.name]!.text.length,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    onEditingComplete: () {
+                      final corrected =
+                          config.hoursPerDay.clamp(0.0, 24.0);
+                      _hoursControllers[device.name]!.text =
+                          corrected.toString();
+                      setState(() {
+                        config.hoursPerDay = corrected;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            /// РЕЖИМ
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Режим',
+                  style: TextStyle(
+                    color: AppColors.textMuted.withOpacity(.8),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Container(
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: brandCard,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(.06),
+                    ),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: config.energyMode,
+                      dropdownColor: brandCard,
+                      icon: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 20,
+                        color: AppColors.neon.withOpacity(.85),
+                      ),
+                      style: const TextStyle(
+                        color: AppColors.textMain,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: .2,
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'basic',
+                          child: Row(
+                            children: [
+                              Icon(Icons.battery_2_bar_rounded, size: 18, color: Colors.green),
+                              SizedBox(width: 8),
+                              Text('Базовий'),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'balanced',
+                          child: Row(
+                            children: [
+                              Icon(Icons.battery_5_bar_rounded, size: 18, color: Colors.lightBlue),
+                              SizedBox(width: 8),
+                              Text('Збалансований'),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'comfort',
+                          child: Row(
+                            children: [
+                              Icon(Icons.battery_full_rounded, size: 18, color: Colors.orange),
+                              SizedBox(width: 8),
+                              Text('Комфорт'),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'custom',
+                          child: Row(
+                            children: [
+                              Icon(Icons.tune_rounded, size: 18, color: AppColors.neon),
+                              SizedBox(width: 8),
+                              Text('Власний'),
+                            ],
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            config.energyMode = value;
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            /// КНОПКИ (Вимкнути / Видалити)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _buildActionButton(
+                  hoverKey: '${device.name}_power',
+                  hoverSet: _hoveredPowerButtons,
+                  icon: Icons.power_settings_new_rounded,
+                  color: Colors.redAccent,
+                  onTap: () => setState(() {
+                    config.amount = 0;
+                  }),
+                ),
+                const SizedBox(width: 10),
+                _buildActionButton(
+                  hoverKey: '${device.name}_delete',
+                  hoverSet: _hoveredDeleteButtons,
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.textMuted,
+                  onTap: () => setState(() {
+                    deletedDeviceNames.add(device.name);
+                  }),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
   
 }
