@@ -26,6 +26,9 @@ dependencies:
   # Local Storage для сохранения энергопрофиля
   shared_preferences: ^2.2.2
 
+  # КРАСИВЫЕ ГРАФИКИ (Добавьте эту строку)
+  fl_chart: ^0.69.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -34,8 +37,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-
   
 
     

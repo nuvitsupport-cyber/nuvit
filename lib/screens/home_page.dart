@@ -23,6 +23,7 @@ import '../widgets/autonomy_result_card.dart';
 import '../widgets/battery_health_card.dart';
 import '../widgets/blackout_readiness_card.dart';
 import '../widgets/weather_insights_card.dart';
+
 import 'devices_page.dart';
 import 'load_management_page.dart';
 import 'energy_hub_page.dart';
@@ -72,7 +73,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.bg,
       body: LayoutBuilder(
         builder: (context, constraints) {
           // Если ширина экрана меньше 900 (как и в твоем MainDashboardContent),

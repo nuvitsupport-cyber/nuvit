@@ -2056,9 +2056,9 @@ decoration: BoxDecoration(
     child: Row(
       children: [
         Icon(
-          Icons.battery_2_bar_rounded,
+          Icons.energy_savings_leaf,
           size: 18,
-          color: Colors.green,
+          color: Color(0x22FF4554),
         ),
         SizedBox(width: 8),
         Text('Базовий'),
@@ -2071,9 +2071,9 @@ decoration: BoxDecoration(
     child: Row(
       children: [
         Icon(
-          Icons.battery_5_bar_rounded,
+          Icons.balance_rounded,
           size: 18,
-          color: Colors.lightBlue,
+          color: Color(0xFF0052FF),
         ),
         SizedBox(width: 8),
         Text('Збалансований'),
@@ -2086,9 +2086,9 @@ decoration: BoxDecoration(
     child: Row(
       children: [
         Icon(
-          Icons.battery_full_rounded,
+          Icons.offline_bolt,
           size: 18,
-          color: Colors.orange,
+          color: Color(0xFFFF7A00),
         ),
         SizedBox(width: 8),
         Text('Комфорт'),
@@ -2375,13 +2375,13 @@ Widget _buildActionButton({
 Color _getModeColor(String mode) {
   switch (mode) {
     case 'basic':
-      return const Color(0xFFFF4D4F);
+      return const Color(0x22FF4554);
 
     case 'balanced':
-      return const Color(0xFF4DB7FF);
+      return const Color(0xFF0052FF);
 
     case 'comfort':
-      return const Color(0xFFFFB84D);
+      return const Color(0xFFFF7A00);
 
     case 'custom':
       return AppColors.neon;

@@ -7206,6 +7206,16 @@ else if (isRcd) {
   'batVoltage': batVoltageController.text,
   'batCount': batCountController.text,
   'batType': selectedBatType,
+  'batCapacityWh':
+    (double.tryParse(batCapacityController.text) ?? 0) *
+    (double.tryParse(batVoltageController.text) ?? 51.2) *
+    (int.tryParse(batCountController.text) ?? 1),
+
+'batCapacityKWh':
+    ((double.tryParse(batCapacityController.text) ?? 0) *
+     (double.tryParse(batVoltageController.text) ?? 51.2) *
+     (int.tryParse(batCountController.text) ?? 1)) /
+    1000,
 
   'batChargeCurrent': batChargeCurrentController.text,
   'batDischargeCurrent': batDischargeCurrentController.text,
