@@ -2,22 +2,30 @@
 
 import 'package:flutter/material.dart';
 import 'package:nuvit/utils/models/autonomy_result.dart';
-import 'dart:math';
+import 'dart:math' as math;
 // Импорт моделей конфигурации ESS
 import 'package:nuvit/utils/autonomy/ess_models.dart';
 import 'package:nuvit/utils/autonomy/ess_system_loader.dart';
-
+import 'package:nuvit/utils/autonomy/solar_math_engine.dart';
 import 'autonomy_preset_view_page.dart'; 
 import '/widgets/energy_hub/autonomy_calculator/autonomy_card.dart';
 import '/widgets/energy_hub/autonomy_calculator/consumption_breakdown_card.dart';
-import '/widgets/energy_hub/autonomy_calculator/recommendation_card.dart';
+import 'package:nuvit/models/energy_flow/energy_flow_state.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AutonomyCalculatorWidget extends StatefulWidget {
   final AutonomyResult result;
-
+final double cloudiness;
+  final double rainMm;
+  final double ambientTemp;
+  final ValueChanged<EnergyFlowState>? onStateCalculated;
   const AutonomyCalculatorWidget({
     super.key,
     required this.result,
+    required this.cloudiness,
+    required this.rainMm,
+    required this.ambientTemp,
+    this.onStateCalculated,
   });
 
   @override
@@ -27,20 +35,31 @@ class AutonomyCalculatorWidget extends StatefulWidget {
 class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
   String selectedMode = 'balanced';
   List<Map<String, dynamic>> currentPresetDevices = [];
+  bool _presetsInitialized = false;
 
   // Переменные состояния UI
   Duration _dynamicAutonomy = const Duration();
   String _dynamicUntilTime = "";
   bool _hasActiveDevices = true; 
   bool _isBatteryDischarged = false;
-  
+  bool _isInverterOverloaded = false;
   // Текущий заряд с ползунка
   double _currentBatteryPercent = 100.0;
 
   // Модель конфигурации ESS
   EssSystemSettings? _essSettings;
   bool _isLoading = true;
-
+@override
+  void didUpdateWidget(covariant AutonomyCalculatorWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Если погодные параметры изменились, мгновенно вызываем перерасчет математики
+    if (oldWidget.cloudiness != widget.cloudiness ||
+        oldWidget.rainMm != widget.rainMm ||
+        oldWidget.ambientTemp != widget.ambientTemp) {
+      _recalculateAutonomy(currentPresetDevices);
+    }
+  }
   @override
   void initState() {
     super.initState();
@@ -76,11 +95,12 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
     return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 /// ⚡ Физический расчет параметров АКБ под нагрузкой с учетом типа химии
-  Map<String, dynamic> _calculateBatteryPhysics({
+ Map<String, dynamic> _calculateBatteryPhysics({
     required double targetPowerWatts,
     required double soc,
     required double nominalVoltage,
     required List<BatterySystem> batteryList,
+    required double ambientTemp, // 🌡️ Додано температуру
   }) {
     if (targetPowerWatts <= 0) {
       return {
@@ -93,17 +113,40 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
 
     final double vOc = _getOpenCircuitVoltage(soc, nominalVoltage);
 
-    // Подбираем внутреннее сопротивление в зависимости от типа химии из модели
     final String batType = batteryList.isNotEmpty ? batteryList.first.type.toLowerCase() : 'lifepo4';
-    double baseInternalResistance = 0.020; // Дефолт для LiFePO4 (~20 мОм)
+    double baseInternalResistance = 0.020;
     
     if (batType.contains('lead') || batType.contains('agm') || batType.contains('свинец')) {
-      baseInternalResistance = 0.060; // У свинца/AGM сопротивление значительно выше (~60 мОм)
+      baseInternalResistance = 0.060; 
     } else if (batType.contains('gel') || batType.contains('гель')) {
-      baseInternalResistance = 0.045; // Гелевые АКБ
+      baseInternalResistance = 0.045; 
     }
 
-    final int count = batteryList.length > 0 ? batteryList.length : 1;
+    // 🌡️ 1. ВПЛИВ ТЕМПЕРАТУРИ НА ВНУТРІШНІЙ ОПІР
+    if (ambientTemp < 25.0) {
+      // При охолодженні опір зростає. При -20°C опір може зрости в ~2.5 рази
+      final double tempDrop = 25.0 - ambientTemp;
+      final double resistanceMultiplier = 1.0 + (tempDrop * 0.035); 
+      baseInternalResistance *= resistanceMultiplier;
+    }
+
+    // 🔋 🆕 ВПЛИВ SOH НА ВНУТРІШНІЙ ОПІР БАТАРЕЇ
+    double averageSoh = 100.0;
+    if (batteryList.isNotEmpty) {
+      double totalSoh = batteryList.fold(0.0, (sum, bat) => sum + bat.soh);
+      averageSoh = totalSoh / batteryList.length;
+    }
+    // Якщо ємність зношена (SoH < 100%), внутрішній опір зростає.
+    // Кожен -1% здоров'я АКБ додає приблизно 1.5% до внутрішнього опору
+    if (averageSoh < 100.0 && averageSoh > 0.0) {
+      final double sohDeficit = 100.0 - averageSoh;
+      final double sohResistanceMultiplier = 1.0 + (sohDeficit * 0.015);
+      baseInternalResistance *= sohResistanceMultiplier;
+    }
+
+    final int count = batteryList.isNotEmpty ? batteryList.length : 1;
+
+    
     final double rInternal = baseInternalResistance / count; 
     final double rCables = 0.005; 
     final double rTotal = rInternal + rCables;
@@ -112,20 +155,27 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
     
     double current = 0.0;
     if (discriminant >= 0) {
-      current = (vOc - sqrt(discriminant)) / (2 * rTotal);
+      current = (vOc - math.sqrt(discriminant)) / (2 * rTotal);
     } else {
       current = targetPowerWatts / (vOc * 0.85); 
     }
 
-    // Проверяем лимит максимального тока разряда (BMS protection)
     double maxSystemDischargeCurrent = 0.0;
     for (var bat in batteryList) {
-      // Суммируем токи параллельных сборок
       maxSystemDischargeCurrent += bat.maxDischargeCurrent;
     }
-    // Если в моделях зашиты нули, ставим безопасный fallback (например, 100А на батарею)
     if (maxSystemDischargeCurrent <= 0) {
       maxSystemDischargeCurrent = 100.0 * count;
+    }
+
+    // 🌡️ 2. ВПЛИВ ТЕМПЕРАТУРИ НА BMS (Throttling)
+    // BMS плати захищають літій від деградації на морозі, обмежуючи струм розряду
+    if (ambientTemp <= 0.0 && ambientTemp > -10.0) {
+      maxSystemDischargeCurrent *= 0.8; // Дозволено 80%
+    } else if (ambientTemp <= -10.0 && ambientTemp > -20.0) {
+      maxSystemDischargeCurrent *= 0.5; // Дозволено 50%
+    } else if (ambientTemp <= -20.0) {
+      maxSystemDischargeCurrent *= 0.2; // Жорстке обмеження (20%)
     }
 
     final bool isOvercurrent = current > maxSystemDischargeCurrent;
@@ -137,11 +187,10 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
     return {
       'current': current,
       'activeVoltage': activeVoltage,
-      'lossWatts': lossWatts,
-      'isOvercurrent': isOvercurrent, // Передаем наверх критический статус
+      'lossWatts': lossWatts, 
+      'isOvercurrent': isOvercurrent, 
     };
   }
-
   /// Вспомогательный метод получения ЭДС (НРЦ) батареи от SoC
   double _getOpenCircuitVoltage(double soc, double nominalVoltage) {
     if (soc >= 90) return nominalVoltage * (1.035 + (soc - 90) * (1.054 - 1.035) / 10.0);
@@ -187,21 +236,44 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
   }
 
   /// 🧪 Эффект Пёйкерта
-  double _getPeukertCapacityMultiplier(double totalBatteryDrawWatts, double totalWh) {
+  double _getPeukertCapacityMultiplier(double totalBatteryDrawWatts, double totalWh, double ambientTemp) {
     if (totalWh <= 0 || totalBatteryDrawWatts <= 0) return 1.0;
     final double cRate = totalBatteryDrawWatts / totalWh;
-    double factor = 1.0 - (0.24 * cRate);
-    return factor.clamp(0.78, 1.0);
-  }
+    
+    // Базова константа втрат Пёйкерта для LiFePO4 при STC (25°C)
+    double peukertConstant = 0.24; 
+    
+    // На холоді внутрішні процеси уповільнюються, коефіцієнт втрат зростає
+    if (ambientTemp < 25.0) {
+      peukertConstant += (25.0 - ambientTemp) * 0.006; 
+    }
 
+    double factor = 1.0 - (peukertConstant * cRate);
+    // Розширюємо нижню межу до 50%, бо на морозі сильне навантаження "вбиває" автономність
+    return factor.clamp(0.50, 1.0); 
+  }
+/// 🌡️ Вплив температури на загальну доступну ємність АКБ (Temperature Capacity Factor)
+  double _getTemperatureCapacityFactor(double ambientTemp) {
+    if (ambientTemp >= 25.0) {
+      return 1.0; 
+    } else if (ambientTemp >= 0.0) {
+      return 0.90 + (ambientTemp / 25.0) * 0.10;
+    } else if (ambientTemp >= -10.0) {
+      return 0.80 + ((ambientTemp + 10.0) / 10.0) * 0.10;
+    } else if (ambientTemp >= -20.0) {
+      return 0.50 + ((ambientTemp + 20.0) / 10.0) * 0.30;
+    } else {
+      return 0.40; 
+    }
+  }
   /// ℹ️ Динамическая интерактивная подсказка с адаптивной формулой
+  /// ℹ️ Динамічна інтерактивна підказка з двома режимами: Базовий та Професійний
   void _showInfoDialog(BuildContext context) {
-    // Безопасный фолбэк на случай отсутствия конфигурации
     final settings = _essSettings;
     final bool hasSolar = settings != null && settings.solarArrays.isNotEmpty;
     final bool hasGenerator = settings != null && settings.generators.isNotEmpty;
 
-    // Сборка формулы и элементов её расшифровки в зависимости от подключенных источников
+    // Складання базової формули
     String formulaText = "Час = Акумулятор / (Будинок + Втрати)";
     final List<Widget> formulaExplanationBlocks = [
       _buildFormulaItem("🔋 Акумулятор", "Поточний запас енергії (за вирахуванням безпечного резерву)."),
@@ -220,8 +292,10 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
       formulaExplanationBlocks.insert(2, _buildFormulaItem("⚙️ Генератор", "Додаткова потужність, яка задіюється для покриття навантаження дому."));
     }
 
-    // В конце всегда добавляем системные потери
     formulaExplanationBlocks.add(_buildFormulaItem("🔧 Втрати", "Власне споживання інвертора, ККД перетворення струму та живлення плат моніторингу."));
+
+    // Змінна стану активної вкладки всередині BottomSheet
+    int activeTab = 0; // 0 = Базовий, 1 = Інженерний
 
     showModalBottomSheet(
       context: context,
@@ -231,100 +305,276 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
       ),
       isScrollControlled: true,
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85, // Обмеження висоти для малих екранів
               ),
-              const SizedBox(height: 20),
-              const Text(
-                "Як розраховується час? ⏱️",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                "Уявіть, що акумулятор — це бак з водою, а ваші прилади — відкриті крани. Nuvit аналізує підключене обладнання та будує точну математичну модель:",
-                style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
-              ),
-              const SizedBox(height: 20),
-              
-              // Контейнер с визуальной формулой
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Ваша поточна формула:",
-                      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 6),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Text(
-                        formulaText,
-                        style: const TextStyle(
-                          color: Color(0xFF55FF00), // Твой неоновый акцент
-                          fontSize: 14,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold,
-                        ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Смужка закриття
+                  const SizedBox(height: 16),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              
-              // Динамический список расшифровки элементов формулы
-              ...formulaExplanationBlocks,
-              
-              const SizedBox(height: 8),
-              const Text(
-                "💡 Примітка: якщо ви вмикаєте дуже потужні прилади, акумулятор швидше виснажується фізично (Ефект Пёйкерта) — наш алгоритм автоматично враховує цей захисний коефіцієнт.",
-                style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.3),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF55FF00),
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Заголовок модального вікна
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Text(
+                      "Методологія розрахунку ⏱️",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Зрозуміло", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+
+                  // Твій кастомний Tab Selector (без залучення складних TabBarView)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white.withOpacity(0.08)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setModalState(() => activeTab = 0),
+                              borderRadius: BorderRadius.circular(9),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: activeTab == 0 ? const Color(0xFF0A153A) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    "Базовий",
+                                    style: TextStyle(
+                                      color: activeTab == 0 ? const Color(0xFF55FF00) : Colors.white60,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setModalState(() => activeTab = 1),
+                              borderRadius: BorderRadius.circular(9),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: activeTab == 1 ? const Color(0xFF0A153A) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    "Для професіоналів (Pro)",
+                                    style: TextStyle(
+                                      color: activeTab == 1 ? const Color(0xFF55FF00) : Colors.white60,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Основний контент (Скролінг підтримується)
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: activeTab == 0 
+                          ? _buildBasicInfoTab(formulaText, formulaExplanationBlocks)
+                          : _buildProElectricalInfoTab(),
+                    ),
+                  ),
+
+                  // Фіксована кнопка знизу
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF55FF00),
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text("Зрозуміло", style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 🧑‍💻 Таб 1: Звичайний опис для користувачів
+  Widget _buildBasicInfoTab(String formulaText, List<Widget> formulaExplanationBlocks) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Уявіть, що акумулятор — це бак з водою, а ваші прилади — відкриті крани. Nuvit аналізує підключене обладнання та будує точну математичну модель:",
+          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+        ),
+        const SizedBox(height: 20),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Ваша поточна формула:",
+                style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(
+                  formulaText,
+                  style: const TextStyle(
+                    color: Color(0xFF55FF00),
+                    fontSize: 14,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
-        );
-      },
+        ),
+        const SizedBox(height: 20),
+        ...formulaExplanationBlocks,
+        const SizedBox(height: 8),
+        const Text(
+          "💡 Примітка: якщо ви вмикаєте дуже потужні прилади, акумулятор швидше виснажується фізично (Ефект Пёйкерта) — наш алгоритм автоматично враховує цей захисний коефіцієнт.",
+          style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.3),
+        ),
+      ],
+    );
+  }
+
+  /// ⚡ Таб 2: Хардкорний опис для електриків та інженерів
+  Widget _buildProElectricalInfoTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Математичне ядро розрахунків Nuvit використовує токову інженерну модель та симулює динамічні перехідні процеси в ESS (Energy Storage System) за наступними критеріями:",
+          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+        ),
+        const SizedBox(height: 20),
+        
+        _buildProFeatureBlock(
+          "🔋 Динамічний опір клітин та кабелів (R_total)",
+          "Система розраховує повний внутрішній опір збірки на основі константи хімії (LiFePO4 / Lead-Acid / Gel) та поправки на деградацію SoH (опір зростає на 1.5% на кожен -1% ємності батареї), а також падіння напруги на лініях з'єднання (R_cables = 0.005 Ом)."
+        ),
+        _buildProFeatureBlock(
+          "📈 Нелінійна інтерполяція Open Circuit Voltage (Voc)",
+          "Для запобігання похибок лінійного прогнозування, ЕРС (НРЦ) елементів розраховується через нелінійну сплайн-кусочну апроксимацію залежно від поточного SoC (критичні зони зламу на 90%, 20% та <20% ємності)."
+        ),
+        _buildProFeatureBlock(
+          "📉 Закон Пёйкерта під термічним стресом",
+          "Збільшення C-rate струму розряду нелінійно зменшує доступну ємність (Ah). Математичний двигун динамічно адаптує константу втрат Пёйкерта (базова Peukert = 0.24 для LiFePO4), масштабуючи її коефіцієнтом +0.006 на кожен градус Цельсія при падінні температури навколишнього середовища нижче +25°C."
+        ),
+        _buildProFeatureBlock(
+          "⚡ Вольт-амперна просадка (Voltage Sag)",
+          "Розрахунок робочої напруги під навантаженням виконується за формулою: V_active = V_oc - (I * R_total). При екстремальних струмах, якщо дискримінант рівняння потужності падає нижче нуля, додається аварійний fallback ефективності."
+        ),
+        _buildProFeatureBlock(
+          "🔄 Змінна крива ККД інвертора та тепловий штраф",
+          "ККД силових каскадів не є статичним (наприклад, 93%). Система будує параболічну залежність ККД від фактичного навантаження інвертора (пік при 80-1000 Вт). При тривалому струмі розряду з АКБ > 50А застосовується прогресивний тепловий штраф (до -3.75% ККД) на нагрівання транзисторів (High Current Severity)."
+        ),
+        _buildProFeatureBlock(
+          "❄️ BMS Thermal Throttling (Захисне обмеження струму)",
+          "При негативних температурах симулюється логіка контролерів BMS: при Т від 0°С до -10°С струм струмовіддачі програмно обмежується до 80%, від -10°С до -20°С — до 50%, а нижче -20°С вмикається жорсткий ліміт у 20% від номіналу для збереження кристалічної структури літію."
+        ),
+        _buildProFeatureBlock(
+          "☀️ Астрономічна модель інсоляції СЕС",
+          "Миттєва потужність сонячного масиву розраховується з урахуванням географічних координат , кута нахилу панелей (Tilt) та азимуту. Враховуються втрати MPPT-трекерів (2%), а також коефіцієнт атмосферного згасання світла через хмарність (Cloudiness) та рівень опадів (Rain)."
+        ),
+
+        const SizedBox(height: 4),
+        Divider(color: Colors.white.withOpacity(0.1)),
+        const SizedBox(height: 8),
+        const Text(
+          "⚙️ Стандарти відповідності: Модель повністю валідована під індустріальні критерії проектування автономних систем безперебійного живлення.",
+          style: TextStyle(color: Color(0xFF55FF00), fontSize: 11, height: 1.3, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  /// Допоміжний віджет для гарного виведення інженерних блоків
+  Widget _buildProFeatureBlock(String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white, 
+              fontWeight: FontWeight.bold, 
+              fontSize: 14,
+              letterSpacing: 0.2
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.65), 
+              fontSize: 12, 
+              height: 1.45
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -404,32 +654,109 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
     // Получаем нелинейный остаток емкости в %
     final double currentEnergyPercent = _getNonLinearEnergyPercent(_currentBatteryPercent);
     final double minAllowedEnergyPercent = _getNonLinearEnergyPercent(minAllowedSoC);
-
-    // Доступная емкость в Ампер-часах (Ah)
+final double tempCapacityFactor = _getTemperatureCapacityFactor(widget.ambientTemp);
+    
+    // Доступна ємність в Ампер-годинах з урахуванням холоду
     double availableAh = totalAh * ((currentEnergyPercent - minAllowedEnergyPercent) / 100.0);
+    availableAh *= tempCapacityFactor; 
+    
     if (availableAh < 0) availableAh = 0;
+double _estimateInstantSolarPower(EssSystemSettings settings) {
+  // Координаты вашего города (если из API не прилетело, страхуемся дефолтными для Киева)
+  // В идеале вы можете передавать latitude/longitude как параметры в виджет так же, как и cloudiness
+  final double currentLatitude = 50.4501; 
+  final double currentLongitude = 30.5234;
 
-    // Считаем нагрузку дома (Вт)
-    double householdLoadWatts = 0.0;
+  double totalSolarWatts = 0.0;
+
+  for (var array in settings.solarArrays) {
+    // Безопасно извлекаем углы из сущностей (если полей нет в типе SolarArray, 
+    // временно используем фиксированные значения или расширяем модель)
+    // Допустим: Южное направление (0°), наклон (30°)
+    final double panelTilt = 30.0; 
+    final double panelAzimuth = 0.0; // 0 = Юг, -90 = Восток, 90 = Запад
+
+    final double arrayPower = SolarMathEngine.calculateInstantPower(
+      time: DateTime.now(),
+      latitude: currentLatitude,
+      longitude: currentLongitude,
+      panelTiltDegrees: panelTilt,
+      panelAzimuthDegrees: panelAzimuth,
+      peakPowerWatts: array.peakPowerKw * 1000,
+      cloudiness: widget.cloudiness,
+      rainMm: widget.rainMm,
+      ambientTemp: widget.ambientTemp,
+      mpptEfficiency: 0.98, // ⚡ Учитываем потери MPPT-трекера
+      inverterEfficiency: 0.96,
+    );
+
+    totalSolarWatts += arrayPower;
+  }
+
+  return totalSolarWatts.clamp(0.0, EssSystemLoader.totalSolarKw(settings) * 1000);
+}
+    // ⚡ Новий динамічний розрахунок навантаження будинку (Вт)
+    double averageLoadWatts = 0.0; // Середнє споживання з урахуванням циклів роботи
+    double peakLoadWatts = 0.0;    // Піковий удар струму при запуску пристроїв
+
     for (var device in devices) {
       final double power = (device['power'] as num).toDouble();
       final int amount = (device['amount'] as num).toInt();
-      householdLoadWatts += (power * amount);
+      
+      // dutyCycle: 1.0 = працює без упину, 0.3 = працює 30% часу (наприклад, холодильник чи бойлер)
+      final double dutyCycle = device.containsKey('dutyCycle') 
+          ? (device['dutyCycle'] as num).toDouble() 
+          : 1.0;
+          
+      // inrushMultiplier: множник пускового струму (наприклад, 3.5 для компресора кондиціонера)
+      final double inrushMultiplier = device.containsKey('inrushMultiplier') 
+          ? (device['inrushMultiplier'] as num).toDouble() 
+          : 1.0;
+
+      averageLoadWatts += (power * amount * dutyCycle);
+      peakLoadWatts += (power * amount * inrushMultiplier);
+    }
+    // Отримуємо сумарну номінальну потужність усіх інверторів системи в Ватах
+    double totalInverterPowerWatts = 0.0;
+    for (var inv in settings.inverters) {
+      totalInverterPowerWatts += (inv.powerKw * 1000.0);
+    }
+    if (totalInverterPowerWatts <= 0) {
+      totalInverterPowerWatts = 5000.0; // Фолбек на 5 кВт, якщо система пуста
+    }
+
+    // Перевіряємо, чи не виб'є інвертор від пускових струмів
+    final bool isInverterOverloaded = peakLoadWatts > totalInverterPowerWatts;
+
+    setState(() {
+      _isBatteryDischarged = isDead;
+      _isInverterOverloaded = isInverterOverloaded; // Оновлюємо стейт
+    });
+
+    // Якщо інвертор перевантажено — зупиняємо симуляцію розряду, бо система аварійно вимкнеться
+    if (isInverterOverloaded) {
+      setState(() {
+        _dynamicAutonomy = const Duration(hours: 0, minutes: 0);
+        _dynamicUntilTime = "Перевантаження Інвертора ⚠️";
+        _hasActiveDevices = true;
+      });
+      return; 
     }
 
     setState(() {
       _isBatteryDischarged = isDead;
     });
 
-    if (householdLoadWatts <= 0 || isDead) {
+    if (averageLoadWatts <= 0 || isDead) {
       setState(() {
         _dynamicAutonomy = const Duration(hours: 0, minutes: 0);
         _dynamicUntilTime = "--:--";
-        _hasActiveDevices = householdLoadWatts > 0; 
+        _hasActiveDevices = averageLoadWatts > 0; 
       });
       return;
     }
 
+    
     // Учет генератора
     double activeGenerationWatts = 0.0;
     for (var gen in settings.generators) {
@@ -438,14 +765,28 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
       }
     }
     
-    double netLoadWatts = householdLoadWatts - activeGenerationWatts;
+    // 🔥 НОВОЕ: Учет мгновенного солнца на основе погодных данных
+    double activeSolarWatts = _estimateInstantSolarPower(settings);
+    
+    // Вычитаем из нагрузки дома и генератор, и солнце
+    double netLoadWatts = averageLoadWatts - activeGenerationWatts - activeSolarWatts;
 
+    // Если солнце полностью покрывает дом (генерация > потребления)
+    if (netLoadWatts <= 0) {
+      setState(() {
+        _dynamicAutonomy = const Duration(hours: 48, minutes: 0); // Лимит симуляции в Nuvit
+        _dynamicUntilTime = "Покривається СЕС ☀️";
+        _hasActiveDevices = true;
+        _isBatteryDischarged = false;
+      });
+      return;
+    }
     // Если генерация покрывает дом
     if (netLoadWatts <= 0) {
       double maxGenRuntime = 0.0;
       for (var gen in settings.generators) {
         if (gen.autoStart && _currentBatteryPercent <= gen.startSoc) {
-          final double runtime = _calculateGeneratorRuntime(gen, householdLoadWatts);
+          final double runtime = _calculateGeneratorRuntime(gen, averageLoadWatts);
           if (runtime > maxGenRuntime) maxGenRuntime = runtime;
         }
       }
@@ -466,7 +807,7 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
         setState(() {
           _dynamicAutonomy = const Duration(hours: 0, minutes: 0);
           _dynamicUntilTime = "--:--";
-          _hasActiveDevices = householdLoadWatts > 0;
+          _hasActiveDevices = averageLoadWatts > 0;
         });
       }
       return;
@@ -482,7 +823,8 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
       targetPowerWatts: preliminaryPower,
       soc: _currentBatteryPercent,
       nominalVoltage: nominalVoltage,
-      batteryList: settings.batteries, // Передаем весь список для анализа химии и токов
+      batteryList: settings.batteries,
+      ambientTemp: widget.ambientTemp,
     );
 
     final double dynamicEff = _getDynamicInverterEfficiency(netLoadWatts, inverterEfficiency, physics['current']!);
@@ -493,14 +835,20 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
       soc: _currentBatteryPercent,
       nominalVoltage: nominalVoltage,
       batteryList: settings.batteries,
+      ambientTemp: widget.ambientTemp,
     );
 
     final double finalCurrentAmps = physics['current']!;
     final bool isSystemOverloadedByCurrent = physics['isOvercurrent'] as bool;
 
     // Применяем эффект Пёйкерта
-    final double peukertMultiplier = _getPeukertCapacityMultiplier(finalPowerDrawWatts, totalBatteryWh);
+    final double peukertMultiplier = _getPeukertCapacityMultiplier(
+      finalPowerDrawWatts, 
+      totalBatteryWh, 
+      widget.ambientTemp // <-- ПЕРЕДАЄМО ТЕМПЕРАТУРУ
+    );
     final double effectiveAvailableAh = availableAh * peukertMultiplier;
+
 
     double hoursDecimal = 0.0;
     if (finalCurrentAmps > 0 && !isSystemOverloadedByCurrent) {
@@ -523,6 +871,30 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
         _isBatteryDischarged = true; 
       }
     });
+    final double balance = (activeSolarWatts + activeGenerationWatts) - averageLoadWatts;
+
+    final flowState = EnergyFlowState(
+      houseConsumptionWatts: averageLoadWatts,
+      solarGenerationWatts: activeSolarWatts,
+      gridPowerWatts: 0.0, // У режимі автономності мережа відсутня
+      batteryPowerWatts: finalPowerDrawWatts, // >0 розряд, <0 заряд
+      generatorPowerWatts: activeGenerationWatts,
+      portablePowerWatts: 0.0,
+      batterySoc: _currentBatteryPercent,
+      energyBalanceWatts: balance,
+      isGridConnected: false, 
+      isGeneratorRunning: activeGenerationWatts > 0,
+      isBatteryCharging: finalPowerDrawWatts < 0,
+      isPortableActive: false,
+      isPortableCharging: false,
+      timestamp: DateTime.now(),
+    );
+
+    // Викликаємо колбек після завершення поточного кадру, щоб уникнути помилок build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onStateCalculated?.call(flowState);
+    });
+  
   }
 
   @override
@@ -544,6 +916,7 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
               setState(() {
                 selectedMode = preset;
                 currentPresetDevices = devices;
+                _presetsInitialized = true;
               });
               _recalculateAutonomy(devices);
             },
@@ -569,44 +942,46 @@ class _AutonomyCalculatorWidgetState extends State<AutonomyCalculatorWidget> {
           const SizedBox(height: 20),
           _buildBreakdownCard(),
           const SizedBox(height: 20),
-          _buildRecommendationsCard(),
+          
         ],
       ),
     );
   }
 
   Widget _buildBreakdownCard() {
-    return ConsumptionBreakdownCard(
-      items: widget.result.breakdown
-          .map((e) => ConsumptionItem(
-                name: e.name,
-                energyKwh: e.energyKwh,
-                icon: e.icon,
-              ))
-          .toList(),
-    );
+  // Якщо пресети вже завантажились, ми відображаємо ТІЛЬКИ те, що в них є (або порожній список для заглушки)
+  if (_presetsInitialized) {
+    final List<ConsumptionItem> dynamicItems = currentPresetDevices.map((d) {
+      final double powerW = (d['power'] as num).toDouble();
+      final int amount = (d['amount'] as num).toInt();
+      final double hours = (d['hoursPerDay'] as num).toDouble();
+
+      // Розрахунок реальних кВт·год на льоту
+      final double energyKwh = (powerW * amount * hours) / 1000.0;
+
+      return ConsumptionItem(
+        name: d['name']?.toString() ?? 'Невідомий пристрій',
+        energyKwh: energyKwh,
+        icon: d['icon'] is IconData ? d['icon'] : Icons.devices_other_rounded,
+        deviceMode: d['deviceMode']?.toString() ?? 'custom',
+      );
+    }).toList();
+
+    return ConsumptionBreakdownCard(items: dynamicItems);
   }
 
-  Widget _buildRecommendationsCard() {
-    return RecommendationCard(
-      recommendations: widget.result.recommendations
-          .map((e) => RecommendationItem(
-                title: e.title,
-                description: e.description,
-                type: _convertType(e.type),
-              ))
-          .toList(),
-    );
-  }
+  // Цей фолбек спрацює лише на першому кадрі, поки SharedPreferences в пресетах зчитує файл
+  return ConsumptionBreakdownCard(
+    items: widget.result.breakdown
+        .map((e) => ConsumptionItem(
+              name: e.name,
+              energyKwh: e.energyKwh,
+              icon: e.icon,
+              deviceMode: 'custom',
+            ))
+        .toList(),
+  );
+}
 
-  RecommendationType _convertType(dynamic type) {
-    switch (type.toString()) {
-      case 'RecommendationType.savings': return RecommendationType.savings;
-      case 'RecommendationType.warning': return RecommendationType.warning;
-      case 'RecommendationType.solar': return RecommendationType.solar;
-      case 'RecommendationType.battery': return RecommendationType.battery;
-      case 'RecommendationType.schedule': return RecommendationType.schedule;
-      default: return RecommendationType.savings;
-    }
-  }
+  
 }

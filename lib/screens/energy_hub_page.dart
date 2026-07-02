@@ -4,14 +4,29 @@ import 'package:flutter/material.dart';
 
 import '../utils/app_colors.dart';
 import '../utils/models/autonomy_result.dart';
+import '../models/energy_flow/energy_flow_state.dart'; // ВАЖЛИВО: Доданий імпорт
 import '../widgets/energy_hub/autonomy_calculator/autonomy_calculator_widget.dart';
 import '../widgets/energy_hub/weather_insights_section.dart';
-class EnergyHubPage extends StatelessWidget {
+import '../widgets/energy_hub/energy_flow_widget.dart';
+
+class EnergyHubPage extends StatefulWidget {
   const EnergyHubPage({super.key});
 
   static const Color brandBg = Color(0xFF020D2D);       
   static const Color brandCard = Color(0xFF0A153A);     
   static const Color brandInnerBg = Color(0xFF051033);  
+
+  @override
+  State<EnergyHubPage> createState() => _EnergyHubPageState();
+}
+
+class _EnergyHubPageState extends State<EnergyHubPage> {
+  double _cloudiness = 0.0;
+  double _rainMm = 0.0;
+  double _ambientTemp = 25.0;
+
+  // 🔥 Стан для віджета потоків (починаємо з пустого)
+  EnergyFlowState _flowState = EnergyFlowState.empty();
 
   @override
   Widget build(BuildContext context) {
@@ -22,13 +37,12 @@ class EnergyHubPage extends StatelessWidget {
         return Container(
           width: double.infinity,
           height: double.infinity,
-          color: brandBg,
+          color: EnergyHubPage.brandBg,
           child: SingleChildScrollView(
             padding: EdgeInsets.all(isDesktop ? 32 : 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                /// 1. Главный заголовок страницы Энергохаб
                 Text(
                   'Енергохаб',
                   style: TextStyle(
@@ -47,18 +61,18 @@ class EnergyHubPage extends StatelessWidget {
                 ),
 
                 SizedBox(height: isDesktop ? 32 : 24),
+                
+                // 🔥 Передаємо стан у віджет
+                EnergyFlowWidget(state: _flowState),
+                
+                SizedBox(height: isDesktop ? 32 : 24),
 
-                /// 2. Карточка калькулятора автономности
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.all(isDesktop ? 24 : 16),
                   decoration: BoxDecoration(
-                    color: brandCard,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.05),
-                      width: 1,
-                    ),
+                    color: EnergyHubPage.brandCard,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,18 +95,35 @@ class EnergyHubPage extends StatelessWidget {
                         ),
                       ),
                       SizedBox(height: isDesktop ? 24 : 16),
+                      
                       AutonomyCalculatorWidget(
                         result: AutonomyResult.demo(),
+                        cloudiness: _cloudiness,
+                        rainMm: _rainMm,
+                        ambientTemp: _ambientTemp,
+                        // 🔥 Отримуємо результати математики і оновлюємо сторінку
+                        onStateCalculated: (newState) {
+                          setState(() {
+                            _flowState = newState;
+                          });
+                        },
                       ),
                     ],
                   ),
                 ),
 
-                // Отступ между калькулятором и виджетом погоды
                 SizedBox(height: isDesktop ? 32 : 24),
 
-                /// 3. ВИДЖЕТ ПОГОДНЫХ ИНСАЙТОВ
-                const WeatherInsightsSection(city: 'Kyiv'), 
+                WeatherInsightsSection(
+                  city: 'Kyiv',
+                  onWeatherUpdated: (cloudiness, rainMm, tempC) {
+                    setState(() {
+                      _cloudiness = cloudiness;
+                      _rainMm = rainMm;
+                      _ambientTemp = tempC;
+                    });
+                  },
+                ), 
               ],
             ),
           ),

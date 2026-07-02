@@ -4,6 +4,7 @@ import '../../utils/autonomy/ess_models.dart';
 import '../../utils/autonomy/ess_system_loader.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Футуристичная палитра Nuvit
 const Color kAppBackground = Color(0xFF020D2D);
@@ -15,10 +16,11 @@ const Color kTextSecondary = Color(0xFF8E99B0);
 
 class WeatherInsightsSection extends StatefulWidget {
   final String city;
-
+final Function(double cloudiness, double rainMm, double tempC)? onWeatherUpdated;
   const WeatherInsightsSection({
     super.key, 
     this.city = 'Kyiv', 
+    this.onWeatherUpdated,
   });
 
   @override
@@ -65,6 +67,17 @@ int _currentRequestId = 0;
     setState(() => _isLoading = true);
 
     try {
+      // ---------------------------------------------------------
+      // НОВИЙ КОД: Отримуємо збережене місто з SharedPreferences
+      // ---------------------------------------------------------
+      final prefs = await SharedPreferences.getInstance();
+      final savedCity = prefs.getString('selectedCity');
+      
+      if (savedCity != null && savedCity.trim().isNotEmpty) {
+        _selectedCity = savedCity.trim();
+      }
+      // ---------------------------------------------------------
+
       // 1. Загружаем настройки СЕС
       final settings = await EssSystemLoader.load();
       // Если за время ожидания прилетел новый запрос или виджет закрыли — выходим
@@ -105,7 +118,11 @@ int _currentRequestId = 0;
         
         final list = weatherData['list'] as List?;
         if (list != null && list.isNotEmpty) {
-          _parseWeatherData(list); // Метод внутри обновит _todayChartSpots, _forecastDays и т.д.
+          _parseWeatherData(list); 
+          widget.onWeatherUpdated?.call(
+            _currentCloudiness,
+            _currentRainMm,
+            _currentTemp,);
         } else {
           // Если погода не загрузилась, тоже можно частично сбросить погодные данные
           _forecastDays = [];
@@ -631,14 +648,21 @@ double _getCloudFactor(double cloudiness) {
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center, // Центрируем иконку редактирования по высоте текста
           children: [
-            // ИСПРАВЛЕНО: Flexible вместо Expanded, чтобы короткие города не отталкивали иконку
             Flexible(
               child: Text(
-                'Прогноз генерації для м. $_selectedCity',
-                style: const TextStyle(color: kTextPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                // Оптимизируем длину строки для мобильных устройств, чтобы сберечь место
+                isMobile 
+                    ? 'Прогноз для м. $_selectedCity' 
+                    : 'Прогноз генерації для м. $_selectedCity',
+                style: const TextStyle(
+                  color: kTextPrimary, 
+                  fontSize: 18, 
+                  fontWeight: FontWeight.bold
+                ),
                 overflow: TextOverflow.ellipsis,
-                maxLines: 1,
+                maxLines: 2, // Разрешаем перенос на 2 строки — теперь даже длинные города не пропадут
               ),
             ),
             const SizedBox(width: 6),
@@ -659,7 +683,7 @@ double _getCloudFactor(double cloudiness) {
         const Text(
           'Оцінка інсоляції та виробітку системи СЕС',
           style: TextStyle(color: kTextSecondary, fontSize: 13),
-          overflow: TextOverflow.ellipsis, // На случай суровых украинских локализаций
+          overflow: TextOverflow.ellipsis,
           maxLines: 1,
         ),
       ],
@@ -667,8 +691,12 @@ double _getCloudFactor(double cloudiness) {
 
     if (isMobile) {
       return Row(
+        crossAxisAlignment: CrossAxisAlignment.start, // Иконка солнца останется сверху, если текст перенесется на 2 строки
         children: [
-          const Icon(Icons.wb_sunny_outlined, color: kNeonGreen, size: 24),
+          const Padding(
+            padding: EdgeInsets.only(top: 2), // Аккуратное выравнивание иконки солнца по первой строке
+            child: Icon(Icons.wb_sunny_outlined, color: kNeonGreen, size: 24),
+          ),
           const SizedBox(width: 10),
           Expanded(child: headerText),
         ],
@@ -678,7 +706,6 @@ double _getCloudFactor(double cloudiness) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // ИСПРАВЛЕНО: Обернули левый блок в Expanded, чтобы дать Column жесткие рамки на Десктопе
         Expanded(
           child: Row(
             children: [
@@ -690,30 +717,29 @@ double _getCloudFactor(double cloudiness) {
         ),
         const SizedBox(width: 12),
         Container(
-  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-  decoration: BoxDecoration(
-    color: kNeonGreen.withOpacity(0.08),
-    borderRadius: BorderRadius.circular(4),
-    border: Border.all(color: kNeonGreen.withOpacity(0.2)),
-  ),
-  child: Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      // Иконка аналитики/расчета вместо мигающей "Live" точки
-      const Icon(Icons.analytics_outlined, color: kNeonGreen, size: 12),
-      const SizedBox(width: 4),
-      const Text(
-        'АКТУАЛЬНИЙ ПРОГНОЗ', 
-        style: TextStyle(
-          color: kNeonGreen, 
-          fontSize: 10, 
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5, // Небольшая разрядка для читаемости капса
-        ),
-      ),
-    ],
-  ),
-)
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: kNeonGreen.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: kNeonGreen.withOpacity(0.2)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.analytics_outlined, color: kNeonGreen, size: 12),
+              SizedBox(width: 4),
+              Text(
+                'АКТУАЛЬНИЙ ПРОГНОЗ', 
+                style: TextStyle(
+                  color: kNeonGreen, 
+                  fontSize: 10, 
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        )
       ],
     );
   }

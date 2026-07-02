@@ -56,7 +56,15 @@ class _InfrastructureHistoryPreviewPageState
   int selectedProperty = 0;
   int selectedTab = 0;
   bool _isDataLoaded = false;
-
+final TextEditingController _cityController = TextEditingController();
+  final List<String> popularCities = [
+    'Вінниця', 'Дніпро', 'Донецьк', 'Житомир', 'Запоріжжя',
+    'Івано-Франківськ', 'Київ', 'Кременчук', 'Кривий Ріг', 'Кропивницький',
+    'Луганськ', 'Луцьк', 'Львів', 'Маріуполь', 'Миколаїв',
+    'Одеса', 'Полтава', 'Рівне', 'Севастополь', 'Сімферополь',
+    'Суми', 'Тернопіль', 'Ужгород', 'Харків', 'Херсон',
+    'Хмельницький', 'Черкаси', 'Чернівці', 'Чернігів'
+  ];
 List<DeviceInfo> selectedDevices = [];
 Map<String, bool> expandedCategories = {};
 Map<String, DeviceConfig> deviceCustomConfigs = {};
@@ -109,7 +117,7 @@ void dispose() {
   if (_isDataLoaded) {
     _saveData(showSnackBar: false);
   }
-
+_cityController.dispose();
   // Очистка ресурсов
   _powerControllers.forEach((_, c) => c.dispose());
   _hoursControllers.forEach((_, c) => c.dispose());
@@ -124,6 +132,7 @@ Future<void> _saveData({
 
     await prefs.setInt('selectedProperty', selectedProperty);
     await prefs.setInt('selectedTab', selectedTab);
+   await prefs.setString('selectedCity', _cityController.text.trim());
     await prefs.setString('expandedCategories', jsonEncode(expandedCategories));
     await prefs.setString('deletedDeviceNames', jsonEncode(deletedDeviceNames.toList()));
     await prefs.setString('customDevicePowers', jsonEncode(customDevicePowers));
@@ -211,7 +220,7 @@ Future<void> _loadData() async {
 
     final localProperty = prefs.getInt('selectedProperty') ?? 0;
     final localTab = prefs.getInt('selectedTab') ?? 0;
-
+    final localCity = prefs.getString('selectedCity') ?? '';
     Map<String, bool> localExpanded = {};
     final expandedString = prefs.getString('expandedCategories');
     if (expandedString != null) {
@@ -268,6 +277,7 @@ Future<void> _loadData() async {
       setState(() {
         selectedProperty = localProperty;
         selectedTab = localTab;
+        _cityController.text = localCity;
         expandedCategories = localExpanded;
         deletedDeviceNames = localDeleted;
         customDevicePowers = localPowers;
@@ -473,7 +483,147 @@ else
               ),
 
               const SizedBox(height: 24),
-
+               /// ВИБІР МІСТА (Мобільна адаптація + Оновлені підказки)
+              _buildMainCard(
+                padding: paddingValue,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Визначаємо, чи екран мобільний (ширина менша за 600 пікселів)
+                    final isMobile = constraints.maxWidth < 600;
+                    
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Введіть або оберіть місто',
+                          style: TextStyle(
+                            color: AppColors.textMain,
+                            fontSize: isMobile ? 20 : 26, // Зменшуємо заголовок на мобільних
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Введіть назву вашого населеного пункту або скористайтеся швидким вибором для точного розрахунку автономності системи',
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: isMobile ? 12 : 14, // Більш компактний опис
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        
+                        /// 1. Поле вільного введення міста
+                        TextField(
+                          controller: _cityController,
+                          style: TextStyle(color: AppColors.textMain, fontSize: isMobile ? 15 : 16),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: brandInnerBg,
+                            // ФІКС: Змінили великі міста на районні центри/містечка як приклад для ручного введення
+                            hintText: 'Наприклад: Миргород, Бровари, Чорноморськ...',
+                            hintStyle: TextStyle(
+                              color: AppColors.textMuted.withOpacity(0.4), 
+                              fontSize: isMobile ? 14 : 15,
+                            ),
+                            prefixIcon: const Icon(Icons.location_city_rounded, color: AppColors.neon),
+                            suffixIcon: _cityController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear_rounded, color: AppColors.textMuted, size: 20),
+                                    onPressed: () {
+                                      setState(() {
+                                        _cityController.clear();
+                                      });
+                                    },
+                                  )
+                                : null,
+                            // Більш акуратні внутрішні відступи для мобільних
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16, 
+                              vertical: isMobile ? 14 : 18,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide(color: Colors.white.withOpacity(0.05)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(color: AppColors.neon, width: 1.4),
+                            ),
+                          ),
+                          onChanged: (value) {
+                            setState(() {}); 
+                          },
+                        ),
+                        
+                        const SizedBox(height: 20),
+                        Text(
+                          'Швидкий вибір великого міста:',
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: isMobile ? 12 : 13,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        /// 2. Дропдаун швидкого вибору
+                        Theme(
+                          data: Theme.of(context).copyWith(
+                            canvasColor: brandCard, 
+                          ),
+                          child: DropdownButtonFormField<String>(
+                            isExpanded: true, // ФИКС: Розтягує вміст і запобігає виходу тексту за межі екрана смартфона
+                            value: popularCities.contains(_cityController.text.trim()) 
+                                ? _cityController.text.trim() 
+                                : null,
+                            hint: Text(
+                              'Оберіть місто зі списку',
+                              style: TextStyle(color: AppColors.textMuted, fontSize: isMobile ? 14 : 15),
+                            ),
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: brandInnerBg,
+                              prefixIcon: const Icon(Icons.playlist_add_check_rounded, color: AppColors.neon),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 16, 
+                                vertical: isMobile ? 14 : 18,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide(color: Colors.white.withOpacity(0.05)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(color: AppColors.neon, width: 1.2),
+                              ),
+                            ),
+                            style: TextStyle(color: AppColors.textMain, fontSize: isMobile ? 15 : 16),
+                            items: popularCities.map((String city) {
+                              return DropdownMenuItem<String>(
+                                value: city,
+                                child: Text(
+                                  city,
+                                  overflow: TextOverflow.ellipsis, // Захист довгих назв (наприклад, Івано-Франківськ) від обрізання
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  _cityController.text = newValue; 
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              
+              const SizedBox(height: 24),
               /// МОЄ ОБЛАДНАННЯ
               _buildMainCard(
                 child: Column(
