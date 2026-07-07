@@ -12,6 +12,8 @@ import '/widgets/energy_hub/autonomy_calculator/autonomy_card.dart';
 import '/widgets/energy_hub/autonomy_calculator/consumption_breakdown_card.dart';
 import 'package:nuvit/models/energy_flow/energy_flow_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:nuvit/models/energy_flow/energy_system_snapshot.dart';
+import 'package:nuvit/utils/energy_flow/energy_flow_engine.dart';
 
 class AutonomyCalculatorWidget extends StatefulWidget {
   final AutonomyResult result;
@@ -780,9 +782,7 @@ double _estimateInstantSolarPower(EssSystemSettings settings) {
         _isBatteryDischarged = false;
       });
       return;
-    }
-    // Если генерация покрывает дом
-    if (netLoadWatts <= 0) {
+    }else if (activeGenerationWatts > 0) {
       double maxGenRuntime = 0.0;
       for (var gen in settings.generators) {
         if (gen.autoStart && _currentBatteryPercent <= gen.startSoc) {
@@ -871,29 +871,57 @@ double _estimateInstantSolarPower(EssSystemSettings settings) {
         _isBatteryDischarged = true; 
       }
     });
-    final double balance = (activeSolarWatts + activeGenerationWatts) - averageLoadWatts;
+    // =========================================================================
+    // ⚡ ФОРМИРОВАНИЕ SNAPSHOT И ВЫЗОВ ENGINE
+    // =========================================================================
+    
+    // Считаем максимальную мощность генераторов для корректного Snapshot
+    double generatorMaxPowerWatts = 0.0;
+    for (var gen in settings.generators) {
+      generatorMaxPowerWatts += (gen.powerKw * 1000.0);
+    }
 
-    final flowState = EnergyFlowState(
-      houseConsumptionWatts: averageLoadWatts,
+    // 1. Упаковываем все рассчитанные физические параметры в Snapshot
+    final snapshot = EnergySystemSnapshot(
+      houseLoadWatts: averageLoadWatts,
       solarGenerationWatts: activeSolarWatts,
-      gridPowerWatts: 0.0, // У режимі автономності мережа відсутня
-      batteryPowerWatts: finalPowerDrawWatts, // >0 розряд, <0 заряд
-      generatorPowerWatts: activeGenerationWatts,
-      portablePowerWatts: 0.0,
-      batterySoc: _currentBatteryPercent,
-      energyBalanceWatts: balance,
-      isGridConnected: false, 
+      windPowerWatts: 0.0,
+      hydroPowerWatts: 0.0,
+      
+      batterySocPercent: _currentBatteryPercent,
+      batteryPowerWatts: finalPowerDrawWatts, // > 0: Разряд, < 0: Заряд
+      batteryChargeLimitWatts: totalInverterPowerWatts, // Грубый лимит зарядки инвертором
+      batteryDischargeLimitWatts: totalInverterPowerWatts,
+      
+      isGridAvailable: false, // В калькуляторе автономности внешней сети нет по определению
+      gridPowerWatts: 0.0,
+      gridImportLimitWatts: 0.0,
+      gridExportLimitWatts: 0.0,
+      
       isGeneratorRunning: activeGenerationWatts > 0,
-      isBatteryCharging: finalPowerDrawWatts < 0,
-      isPortableActive: false,
-      isPortableCharging: false,
+      generatorPowerWatts: activeGenerationWatts,
+      generatorMaxPowerWatts: generatorMaxPowerWatts,
+      
+      portableStationWatts: 0.0,
+      evBackupWatts: 0.0,
+      
       timestamp: DateTime.now(),
+      weather: WeatherData(
+        ambientTemp: widget.ambientTemp,
+        cloudiness: widget.cloudiness,
+        rainMm: widget.rainMm,
+      ),
     );
 
-    // Викликаємо колбек після завершення поточного кадру, щоб уникнути помилок build
+    // 2. Прогоняем Snapshot через математический диспетчер
+    const engine = EnergyFlowEngine();
+    final flowState = engine.calculate(snapshot);
+
+    // 3. Отдаем готовый граф состояний (узлы, связи, сводку) наружу
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onStateCalculated?.call(flowState);
     });
+    
   
   }
 

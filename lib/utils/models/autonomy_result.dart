@@ -93,7 +93,7 @@ class AutonomyResult {
         minutes: 24,
       ),
 
-      batteryPercent: 68,
+      batteryPercent: 100,
 
       autonomyEndTime: DateTime.now().add(
         const Duration(

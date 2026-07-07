@@ -4,18 +4,18 @@ import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
 import '../../models/energy_flow/energy_flow_state.dart';
+import '../../models/energy_flow/energy_connection.dart';
 
 class EnergyFlowWidget extends StatelessWidget {
-  final EnergyFlowState? state; // Приймаємо стан
+  final EnergyFlowState? state;
 
   const EnergyFlowWidget({super.key, this.state});
 
   static const Color neonGreen = Color(0xFF55FF00); 
-  static const Color neonOrange = Color(0xFFFF9900); // Колір для мережі/генератора
+  static const Color neonOrange = Color(0xFFFF9900); 
   static const Color cardBg = Color(0xFF0A153A);    
   static const Color innerBg = Color(0xFF020D2D);   
 
-  // Допоміжна функція форматування кВт
   String _formatKw(double watts) {
     if (watts == 0) return '0 Вт';
     if (watts.abs() < 1000) return '${watts.abs().toStringAsFixed(0)} Вт';
@@ -82,7 +82,6 @@ class EnergyFlowWidget extends StatelessWidget {
   }
 
   Widget _buildFlowDiagram(EnergyFlowState flow) {
-    // Збільшуємо висоту, щоб вмістити верхній вузол СЕС
     return Container(
       height: 320,
       padding: const EdgeInsets.all(16),
@@ -96,7 +95,7 @@ class EnergyFlowWidget extends StatelessWidget {
           final height = constraints.maxHeight;
           
           final cx = width / 2;
-          final cy = (height / 2) + 20.0; // Опускаємо центр нижче для даху
+          final cy = (height / 2) + 20.0; 
 
           const double wallHalfWidth = 50.0; 
           const double wallHalfHeight = 35.0;
@@ -115,15 +114,15 @@ class EnergyFlowWidget extends StatelessWidget {
 
           const double iconRadius = 21.5; 
 
-          // Логіка відображення правого вузла
-          bool useGen = flow.isGeneratorRunning;
+          bool useGen = flow.statistics.isGeneratorRunning;
           String rightTitle = useGen ? 'Генератор' : 'Мережа';
           IconData rightIcon = useGen ? Icons.settings_input_component_rounded : Icons.electric_bolt_rounded;
-          double rightPower = useGen ? flow.generatorPowerWatts : flow.gridPowerWatts;
+          double rightPower = useGen ? flow.summary.generatorPowerWatts : flow.summary.gridPowerWatts;
 
           return Stack(
             clipBehavior: Clip.none,
             children: [
+              // 1. Контур будинку (завжди видимий)
               Positioned.fill(
                 child: CustomPaint(
                   painter: NuvitHouseBackgroundPainter(
@@ -135,7 +134,7 @@ class EnergyFlowWidget extends StatelessWidget {
                 ),
               ),
 
-              // Лінії потоків з передачею даних напрямку
+              // 2. Рендеринг ліній та стрілок строго за наявністю елементів у connections
               Positioned.fill(
                 child: CustomPaint(
                   painter: EnergyFlowPainter(
@@ -145,21 +144,16 @@ class EnergyFlowWidget extends StatelessWidget {
                     wallRightX: wallRightX,
                     sideNodesY: sideNodesY,
                     bottomNodeY: bottomNodeY,
-                    topNodeY: topNodeY + 30, // точка входу в іконку
                     leftIconEdgeX: leftIconX,
                     rightIconEdgeX: rightIconX,
                     roofHeight: roofHeight,
                     wallHalfHeight: wallHalfHeight,
-                    // Дані для напрямку:
-                    solarWatts: flow.solarGenerationWatts,
-                    batteryWatts: flow.batteryPowerWatts,
-                    rightNodeWatts: rightPower,
-                    houseWatts: flow.houseConsumptionWatts,
+                    connections: flow.connections,
                   ),
                 ),
               ),
 
-              // Центральний вузол
+              // 3. Центральна точка перетину
               Positioned(
                 left: cx - 7, top: cy - 7,
                 child: Container(
@@ -174,23 +168,23 @@ class EnergyFlowWidget extends StatelessWidget {
                 ),
               ),
 
-              // ВЕРХНІЙ ВУЗОЛ (СЕС)
+              // 4. Вузол СЕС
               Positioned(
                 left: cx - 60,
                 top: topNodeY,
                 width: 120,
-                child: _buildSideNode('Генерація СЕС', _formatKw(flow.solarGenerationWatts), Icons.solar_power_rounded),
+                child: _buildSideNode('Генерація СЕС', _formatKw(flow.summary.solarGenerationWatts), Icons.solar_power_rounded),
               ),
 
-              // ЛІВИЙ ВУЗОЛ (АКБ)
+              // 5. Вузол АКБ
               Positioned(
                 left: leftIconX - 60,
                 width: 120,
                 bottom: height - (sideNodesY + iconRadius) + 8,
-                child: _buildSideNode('Акумулятор', _formatKw(flow.batteryPowerWatts), Icons.battery_charging_full_rounded),
+                child: _buildSideNode('Акумулятор', _formatKw(flow.summary.batteryPowerWatts), Icons.battery_charging_full_rounded),
               ),
 
-              // ПРАВИЙ ВУЗОЛ (Мережа / Генератор)
+              // 6. Вузол Мережа / Генератор
               Positioned(
                 left: rightIconX - 60,
                 width: 120,
@@ -198,7 +192,7 @@ class EnergyFlowWidget extends StatelessWidget {
                 child: _buildSideNode(rightTitle, _formatKw(rightPower), rightIcon, iconColor: useGen ? neonOrange : neonGreen),
               ),
 
-              // НИЖНІЙ ВУЗОЛ (Будинок)
+              // 7. Вузол Споживання Дому
               Positioned(
                 left: cx - 21.5, 
                 top: bottomNodeY - iconRadius,
@@ -222,7 +216,7 @@ class EnergyFlowWidget extends StatelessWidget {
                       children: [
                         Text('Споживання', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
                         Text(
-                          _formatKw(flow.houseConsumptionWatts),
+                          _formatKw(flow.summary.houseConsumptionWatts),
                           style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
                         ),
                       ],
@@ -259,8 +253,8 @@ class EnergyFlowWidget extends StatelessWidget {
   }
 
   Widget _buildBalanceCard(EnergyFlowState flow) {
-    bool isSurplus = flow.energyBalanceWatts > 0;
-    bool isDeficit = flow.energyBalanceWatts < 0;
+    bool isSurplus = flow.statistics.energyBalanceWatts > 0;
+    bool isDeficit = flow.statistics.energyBalanceWatts < 0;
     
     String sign = isSurplus ? "+" : (isDeficit ? "-" : "");
     String status = isSurplus ? "Надлишок генерації" : (isDeficit ? "Дефіцит енергії" : "Баланс ідеальний");
@@ -276,7 +270,7 @@ class EnergyFlowWidget extends StatelessWidget {
           Text('Енергетичний баланс', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
           const SizedBox(height: 6),
           Text(
-            '$sign${_formatKw(flow.energyBalanceWatts.abs())}',
+            '$sign${_formatKw(flow.statistics.energyBalanceWatts.abs())}',
             style: TextStyle(color: mainColor, fontSize: 26, fontWeight: FontWeight.bold),
           ),
           Text(status, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
@@ -301,7 +295,6 @@ class EnergyFlowWidget extends StatelessWidget {
   }
 }
 
-// ... (NuvitHouseBackgroundPainter залишається без змін)
 class NuvitHouseBackgroundPainter extends CustomPainter {
   final double cx, cy, wallHalfWidth, wallHalfHeight, roofHeight;
   NuvitHouseBackgroundPainter({required this.cx, required this.cy, required this.wallHalfWidth, required this.wallHalfHeight, required this.roofHeight});
@@ -348,24 +341,83 @@ class NuvitHouseBackgroundPainter extends CustomPainter {
   bool shouldRepaint(covariant NuvitHouseBackgroundPainter oldDelegate) => oldDelegate.cx != cx || oldDelegate.cy != cy;
 }
 
-
 class EnergyFlowPainter extends CustomPainter {
   final double cx, cy, wallHalfWidth, wallLeftX, wallRightX;
-  final double sideNodesY, bottomNodeY, topNodeY;
+  final double sideNodesY, bottomNodeY;
   final double leftIconEdgeX, rightIconEdgeX, roofHeight, wallHalfHeight;
   
-  // Дані стану
-  final double solarWatts;
-  final double batteryWatts;
-  final double rightNodeWatts;
-  final double houseWatts;
+  final List<EnergyConnection> connections;
 
   EnergyFlowPainter({
     required this.cx, required this.cy, required this.wallHalfWidth, required this.wallLeftX, required this.wallRightX,
-    required this.sideNodesY, required this.bottomNodeY, required this.topNodeY, required this.leftIconEdgeX, required this.rightIconEdgeX,
+    required this.sideNodesY, required this.bottomNodeY, required this.leftIconEdgeX, required this.rightIconEdgeX,
     required this.roofHeight, required this.wallHalfHeight,
-    required this.solarWatts, required this.batteryWatts, required this.rightNodeWatts, required this.houseWatts,
+    required this.connections,
   });
+
+  void _drawBranch(Canvas canvas, String nodeId, Paint paint, Paint glowPaint) {
+    final path = Path();
+    final double dy = cy - sideNodesY;
+    final double dx = dy;
+
+    if (nodeId == 'solar') {
+      path.moveTo(cx, cy);
+      path.lineTo(cx, (cy - wallHalfHeight) - roofHeight + 5);
+    } else if (nodeId == 'house') {
+      path.moveTo(cx, cy);
+      path.lineTo(cx, bottomNodeY);
+    } else if (nodeId == 'battery') {
+      path.moveTo(cx, cy);
+      path.lineTo(wallLeftX, cy);
+      path.lineTo(wallLeftX - dx, sideNodesY);
+      path.lineTo(leftIconEdgeX, sideNodesY);
+    } else if (nodeId == 'grid' || nodeId == 'generator') {
+      path.moveTo(cx, cy);
+      path.lineTo(wallRightX, cy);
+      path.lineTo(wallRightX + dx, sideNodesY);
+      path.lineTo(rightIconEdgeX, sideNodesY);
+    } else {
+      return;
+    }
+
+    canvas.drawPath(path, glowPaint);
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawArrowForBranch(Canvas canvas, String nodeId, bool isSource, Paint paint, Paint glowPaint) {
+    final double dy = cy - sideNodesY;
+    final double dx = dy;
+    Offset tip;
+    double angle;
+
+    if (nodeId == 'solar') {
+      tip = Offset(cx, (cy - wallHalfHeight) - roofHeight + 15);
+      angle = math.pi / 2; 
+    } else if (nodeId == 'house') {
+      tip = Offset(cx, bottomNodeY - 5);
+      angle = math.pi / 2; 
+    } else if (nodeId == 'battery') {
+      if (isSource) {
+        tip = Offset(wallLeftX - dx / 2, sideNodesY + dy / 2);
+        angle = 0; 
+      } else {
+        tip = Offset(leftIconEdgeX + 10, sideNodesY);
+        angle = math.pi; 
+      }
+    } else if (nodeId == 'grid' || nodeId == 'generator') {
+      if (isSource) {
+        tip = Offset(wallRightX + dx / 2, sideNodesY + dy / 2);
+        angle = math.pi; 
+      } else {
+        tip = Offset(rightIconEdgeX - 10, sideNodesY);
+        angle = 0; 
+      }
+    } else {
+      return;
+    }
+
+    _drawArrow(canvas, tip, angle, paint, glowPaint);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -384,50 +436,23 @@ class EnergyFlowPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
 
-    final double dy = cy - sideNodesY;
-    final double dx = dy; 
+    bool drawLeftDot = false;
+    bool drawRightDot = false;
 
-    // СЕС (Дах)
-    if (solarWatts > 0) {
-      final pathTop = Path()..moveTo(cx, cy)..lineTo(cx, (cy - wallHalfHeight) - roofHeight + 5);
-      canvas.drawPath(pathTop, glowPaint); canvas.drawPath(pathTop, paint);
-      // Стрілка завжди до центру (вниз)
-      _drawArrow(canvas, Offset(cx, (cy - wallHalfHeight) - roofHeight + 15), math.pi / 2, paint, glowPaint);
+    // Малюємо лінії виключно за наявністю у списку з потужністю > 0
+    for (final conn in connections) {
+      if (conn.powerWatts.abs() <= 0.1) continue;
+
+      _drawBranch(canvas, conn.from, paint, glowPaint);
+      _drawArrowForBranch(canvas, conn.from, true, paint, glowPaint);
+
+      _drawBranch(canvas, conn.to, paint, glowPaint);
+      _drawArrowForBranch(canvas, conn.to, false, paint, glowPaint);
+
+      if (conn.from == 'battery' || conn.to == 'battery') drawLeftDot = true;
+      if (['grid', 'generator'].contains(conn.from) || ['grid', 'generator'].contains(conn.to)) drawRightDot = true;
     }
 
-    // Батарея (Ліворуч)
-    if (batteryWatts != 0) {
-      final pathLeft = Path()..moveTo(cx, cy)..lineTo(wallLeftX, cy)..lineTo(wallLeftX - dx, sideNodesY)..lineTo(leftIconEdgeX, sideNodesY);
-      canvas.drawPath(pathLeft, glowPaint); canvas.drawPath(pathLeft, paint);
-      
-      if (batteryWatts > 0) { // Розряд (до центру)
-        _drawArrow(canvas, Offset(wallLeftX - dx/2, sideNodesY + dy/2), 0, paint, glowPaint); 
-      } else { // Заряд (від центру)
-        _drawArrow(canvas, Offset(leftIconEdgeX + 10, sideNodesY), math.pi, paint, glowPaint);
-      }
-    }
-
-    // Мережа / Генератор (Праворуч)
-    if (rightNodeWatts != 0) {
-      final pathRight = Path()..moveTo(cx, cy)..lineTo(wallRightX, cy)..lineTo(wallRightX + dx, sideNodesY)..lineTo(rightIconEdgeX, sideNodesY);
-      canvas.drawPath(pathRight, glowPaint); canvas.drawPath(pathRight, paint);
-      
-      if (rightNodeWatts > 0) { // Імпорт (до центру)
-        _drawArrow(canvas, Offset(wallRightX + dx/2, sideNodesY + dy/2), math.pi, paint, glowPaint); 
-      } else { // Експорт (від центру)
-        _drawArrow(canvas, Offset(rightIconEdgeX - 10, sideNodesY), 0, paint, glowPaint);
-      }
-    }
-
-    // Будинок (Знизу)
-    if (houseWatts > 0) {
-      final pathBottom = Path()..moveTo(cx, cy)..lineTo(cx, bottomNodeY);
-      canvas.drawPath(pathBottom, glowPaint); canvas.drawPath(pathBottom, paint);
-      // Завжди до будинку (вниз)
-      _drawArrow(canvas, Offset(cx, bottomNodeY - 5), math.pi / 2, paint, glowPaint);
-    }
-
-    // Крапки на перетині ліній
     final dotPaint = Paint()..color = EnergyFlowWidget.neonGreen;
     final dotGlow = Paint()..color = EnergyFlowWidget.neonGreen.withOpacity(0.8)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
       
@@ -435,8 +460,8 @@ class EnergyFlowPainter extends CustomPainter {
       canvas.drawCircle(offset, 3.5, dotGlow); canvas.drawCircle(offset, 3.5, dotPaint);
     }
 
-    if (batteryWatts != 0) drawDot(Offset(wallLeftX, cy)); 
-    if (rightNodeWatts != 0) drawDot(Offset(wallRightX, cy)); 
+    if (drawLeftDot) drawDot(Offset(wallLeftX, cy));
+    if (drawRightDot) drawDot(Offset(wallRightX, cy));
   }
 
   void _drawArrow(Canvas canvas, Offset tip, double angle, Paint paint, Paint glow) {
@@ -446,7 +471,7 @@ class EnergyFlowPainter extends CustomPainter {
 
     canvas.save();
     canvas.translate(tip.dx, tip.dy);
-    canvas.rotate(angle); 
+    canvas.rotate(angle);
     
     final fillPaint = Paint()..color = paint.color..style = PaintingStyle.fill;
     canvas.drawPath(path, glow); canvas.drawPath(path, fillPaint);
@@ -454,7 +479,7 @@ class EnergyFlowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant EnergyFlowPainter old) => true; // Завжди перемальовуємо при зміні даних
+  bool shouldRepaint(covariant EnergyFlowPainter old) => true; 
 }
 
 class ChartPainter extends CustomPainter {
