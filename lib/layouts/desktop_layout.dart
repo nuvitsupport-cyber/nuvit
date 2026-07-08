@@ -27,7 +27,7 @@ class _DesktopLayoutState extends State<DesktopLayout> {
   final Color neonColor = const Color(0xFF39FF14);
 
   final List<_SidebarItem> items = [
-    _SidebarItem(icon: Icons.home_outlined, title: 'Home'),
+    _SidebarItem(icon: Icons.home_outlined, title: 'Головна'),
     _SidebarItem(icon: Icons.bolt_outlined, title: 'Енергохаб'),
     _SidebarItem(icon: Icons.account_tree_outlined, title: 'Налаштування інфраструктури'),
     _SidebarItem(icon: Icons.assignment_outlined, title: 'Reports'),

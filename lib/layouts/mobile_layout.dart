@@ -108,7 +108,7 @@ class MobileLayout extends StatelessWidget {
                 padding: EdgeInsets.only(bottom: 4),
                 child: Icon(Icons.home),
               ),
-              label: 'Home',
+              label: 'Головна',
             ),
             BottomNavigationBarItem(
               icon: Padding(

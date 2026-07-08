@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Добавлен импорт
 
 import '../utils/app_colors.dart';
 import '../utils/models/autonomy_result.dart';
 import '../widgets/energy_hub/autonomy_calculator/autonomy_calculator_widget.dart';
 import '../widgets/energy_hub/weather_insights_section.dart';
-import '../widgets/outage_schedule/outage_schedule_widget.dart';
 
-// Импорт модели данных графика отключений (проверьте относительный путь в вашем проекте)
-import '../models/outage/outage_forecast.dart';
-// import '../models/outage/outage_settings.dart'; // Раскомментируйте при подключении провайдера
-// import '../providers/outage/mock_outage_provider.dart'; // Раскомментируйте для тестов
 
 class EnergyHubPage extends StatefulWidget {
   const EnergyHubPage({super.key});
@@ -31,15 +26,10 @@ class _EnergyHubPageState extends State<EnergyHubPage> {
   String _selectedCity = 'Київ'; // Город по умолчанию
   bool _isLoadingCity = true;
 
-  // Переменные состояния для модуля графика отключений
-  OutageForecast? _outageForecast;
-  bool _isOutageLoading = false;
-
   @override
   void initState() {
     super.initState();
     _loadCity();
-    _loadOutageData(); // Запуск загрузки графика при инициализации страницы
   }
 
   // Загружаем город из глобальных настроек инфраструктуры
@@ -60,32 +50,6 @@ class _EnergyHubPageState extends State<EnergyHubPage> {
       if (mounted) {
         setState(() {
           _isLoadingCity = false;
-        });
-      }
-    }
-  }
-
-  // Метод для загрузки/обновления данных графика отключений
-  Future<void> _loadOutageData() async {
-    if (!mounted) return;
-
-    setState(() {
-      _isOutageLoading = true;
-    });
-
-    try {
-      // TODO: Подключите ваш MockOutageProvider или реальный API-сервис ДТЕК
-      // const provider = MockOutageProvider();
-      // final forecast = await provider.loadForecast(const OutageSettings());
-      // setState(() {
-      //   _outageForecast = forecast;
-      // });
-    } catch (e) {
-      // Здесь можно обработать потенциальные ошибки сети
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isOutageLoading = false;
         });
       }
     }
@@ -167,14 +131,7 @@ class _EnergyHubPageState extends State<EnergyHubPage> {
                   ),
                 ),
 
-                SizedBox(height: isDesktop ? 32 : 24),
-
-                // Интеграция реального виджета графика отключений вместо заглушки
-                OutageScheduleWidget(
-                  forecast: _outageForecast,
-                  isLoading: _isOutageLoading,
-                  onRefresh: _loadOutageData,
-                ),
+                
 
                 SizedBox(height: isDesktop ? 32 : 24), 
 
